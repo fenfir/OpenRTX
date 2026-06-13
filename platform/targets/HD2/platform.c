@@ -529,13 +529,13 @@ uint8_t platform_getVolumeLevel(void)
 
 /* Channel knob = 2-bit quadrature encoder on GPIOB.5 (A) / GPIOB.6 (B), live-
  * mapped 2026-06-01.  Incremental (up/down), so we decode A/B transitions into
- * an accumulating position counter -- MUST be polled each superloop tick (the
- * UI calls this every iteration).  CW gray sequence is 00->01->11->10. */
+ * an accumulating position counter -- MUST be polled frequently (the UI calls
+ * this every iteration).  CW gray sequence is 00->01->11->10. */
 #define CH_ENC_A_BIT    5u
 #define CH_ENC_B_BIT    6u
 /* Quarter-steps per emitted channel step.  HW measurement: polled (non-IRQ)
  * decoding catches only ~1-1.5 of the 4 quadrature edges per detent (the
- * superloop polls too slowly to see them all), so 1 gives ~1 channel/click.
+ * poll loop is too slow to see them all), so 1 gives ~1 channel/click.
  * Reliable 1:1 would need a GPIO interrupt on PB5/PB6 (not wired -- TODO). */
 #define CH_ENC_DETENT   1
 

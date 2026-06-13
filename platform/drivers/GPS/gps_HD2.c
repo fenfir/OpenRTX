@@ -33,8 +33,8 @@
  * word-spaced registers (see HR_C7000 manual 4.3).  This driver polls
  * the receiver (LSR Data-Ready) and feeds bytes into OpenRTX's
  * nmeaRbuf, which the core gps_task drains via getSentence().  A polled
- * design avoids wiring the CSKY V2 PIC during bring-up; gps_task is
- * called from the cooperative superloop in hd2_app.c.
+ * design avoids wiring the CSKY V2 PIC; the core gps_task drives it on
+ * the threaded build.
  */
 
 #include "hwconfig.h"

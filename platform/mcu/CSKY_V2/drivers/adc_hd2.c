@@ -39,7 +39,8 @@
  * NOTE: unlike the vendor (which gates the whole accessor behind an OS
  * semaphore and waits for an interrupt), we busy-poll ADC_CTRL_STATE with a
  * bounded guard loop, mirroring the clk_init_pll bring-up style in
- * platform.c.  No RTOS is running during the HD2 superloop bring-up.
+ * platform.c.  The conversion completes in microseconds, so the brief
+ * busy-poll does not meaningfully stall the caller's thread.
  * --------------------------------------------------------------------------
  */
 
@@ -56,7 +57,7 @@
 
 /* Bounded busy-wait: the conversion is 200 KSPS (~5us), so a few thousand
  * spin iterations at the ck803s clock is far more than one conversion needs.
- * If the controller never goes idle we bail rather than hang the superloop. */
+ * If the controller never goes idle we bail rather than hang the caller. */
 #define ADC_GUARD_ITERS     200000u
 
 /*

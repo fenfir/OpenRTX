@@ -543,63 +543,6 @@ cs7000_inc += openrtx_inc + stm32f405_inc
 cs7000_def += openrtx_def + stm32f405_def
 
 ##
-## Ailunce HD2 (HR_C7000 / CSKY V2 ck803s)
-##
-## Minimal bring-up: just platform glue + crt0 + a UART hello loop.
-## openrtx_src is intentionally NOT included yet -- the core depends
-## on display/keyboard/threads which we'll add driver-by-driver.  Once
-## those exist the standard openrtx_init() flow takes over and the
-## PLATFORM_HD2 guard in openrtx/src/main.c goes away.
-##
-hd2_src = ['platform/targets/HD2/main.c',
-           'platform/targets/HD2/platform.c',
-           'platform/targets/HD2/hwconfig.c',
-           'platform/drivers/display/ST7735S_HD2.c',
-           'platform/drivers/backlight/backlight_HD2.c',
-           'platform/drivers/baseband/AT1846S_HD2.cpp',
-           'platform/drivers/baseband/radio_HD2.cpp',
-           'platform/drivers/baseband/radio_test_HD2.cpp',
-           'platform/drivers/baseband/fm_broadcast_HD2.c',
-           'platform/mcu/CSKY_V2/drivers/i2c_csky.c',
-           'platform/drivers/keyboard/keyboard_HD2.c',
-           'platform/drivers/SPI/spi_hd2.c',
-           'platform/drivers/GPS/gps_HD2.c',
-           'platform/drivers/GPS/nmea_rbuf.c',
-           'platform/drivers/NVM/W25Qx.c',
-           'platform/drivers/NVM/nvmem_HD2.c',
-           'platform/drivers/NVM/nvmem_settings_HD2.c',
-           'platform/mcu/CSKY_V2/drivers/gpio_csky.c',
-           'platform/mcu/CSKY_V2/drivers/adc_hd2.c',
-           'platform/mcu/CSKY_V2/drivers/rtc_hd2.c',
-           'platform/mcu/CSKY_V2/drivers/pthread_stubs.c',
-           'platform/mcu/CSKY_V2/boot/startup.S',
-           'platform/mcu/CSKY_V2/drivers/delays.c',
-           'platform/mcu/CSKY_V2/drivers/irq_test.c',
-           'platform/mcu/CSKY_V2/drivers/irq_entry.S',
-           # --- OpenRTX UI superloop (cooperative; see hd2_app.c) ---
-           'platform/targets/HD2/hd2_app.c',
-           'platform/targets/HD2/hd2_app_stubs.c',
-           'openrtx/src/core/state.c',
-           'openrtx/src/core/graphics.c',
-           'openrtx/src/core/input.c',
-           'openrtx/src/core/utils.c',
-           'openrtx/src/core/cps.c',
-           'openrtx/src/core/crc.c',
-           'openrtx/src/core/gps.c',
-           'lib/minmea/minmea.c',
-           'openrtx/src/core/datetime.c',
-           'openrtx/src/ui/default/ui.c',
-           'openrtx/src/ui/default/ui_main.c',
-           'openrtx/src/ui/default/ui_menu.c',
-           'openrtx/src/ui/default/ui_strings.c']
-
-hd2_inc = ['platform/targets/HD2', 'platform/mcu/CSKY_V2']
-hd2_def = {'PLATFORM_HD2': '', 'timegm': 'mktime'}
-
-hd2_inc += openrtx_inc
-hd2_def += openrtx_def
-
-##
 ## Connect Systems CS70000-PLUS
 ##
 cs7000p_src = ['platform/drivers/NVM/nvmem_CS7000.c',
@@ -765,15 +708,6 @@ foreach k, v : cs7000p_def
   endif
 endforeach
 
-hd2_args = []
-foreach k, v : hd2_def
-  if v == ''
-    hd2_args += '-D@0@'.format(k)
-  else
-    hd2_args += '-D@0@=@1@'.format(k, v)
-  endif
-endforeach
-
 dm1701_args = []
 foreach k, v : dm1701_def
   if v == ''
@@ -901,56 +835,6 @@ dm1701_opts = {
   'link_args'          : ['-Wl,-T../platform/mcu/STM32F4xx/linker_script_MDx.ld']
 }
 
-hd2_opts = {
-  'sources'            : hd2_src,
-  'include_directories': hd2_inc,
-  'dependencies'       : [],
-  'c_args'             : hd2_args,
-  'cpp_args'           : hd2_args,
-  'link_args'          : ['-Wl,-T../platform/mcu/CSKY_V2/linker_script.ld']
-}
-
-##
-## Phase-1 Miosix CK803S standalone bring-up test (2-thread LED blink).
-## Declared as its OWN executable() (NOT in the `targets` foreach) so it
-## supplies its own main() and does not pull openrtx main.c / the superloop.
-## Build:  ninja -C build_hd2 miosix_hd2_blink
-##
-if meson.is_cross_build()
-  hd2_blink_src = ['platform/mcu/CSKY_V2/boot/startup_miosix.S',
-                   'platform/mcu/CSKY_V2/boot/bsp_phase1.cpp',
-                   'platform/mcu/CSKY_V2/tests/miosix_blink.cpp'] + miosix_cskyv2_src
-  # 'compat' FIRST so its <sys/dirent.h> shim overrides the Xuantie newlib's
-  # "#error not supported" stub (needed by Miosix file.h in a no-FS build).
-  hd2_blink_inc = ['platform/mcu/CSKY_V2/compat',
-                   'platform/mcu/CSKY_V2'] + miosix_cskyv2_inc
-  # The Xuantie CSKY newlib (unlike the Miosix-patched ARM toolchain) only
-  # declares pthreads in <pthread.h> when _POSIX_THREADS is defined, and gates
-  # the UNIX98 recursive-mutex attrs behind _UNIX98_THREAD_MUTEX_ATTRIBUTES.
-  # Its sys/features.h only auto-defines _POSIX_THREADS under __rtems__/__XMK__
-  # (and _GNU_SOURCE does NOT trigger it here), so we define the pthread.h gate
-  # macros directly -- pthread.h only checks defined(), and features.h never
-  # touches them in our config. Miosix's sync.h/kernel.h need both.
-  hd2_blink_def = {'_MIOSIX_GCC_PATCH_MAJOR'          : '3',
-                   '_MIOSIX_GCC_PATCH_VERSION'        : '2',
-                   '_POSIX_THREADS'                   : '',
-                   '_UNIX98_THREAD_MUTEX_ATTRIBUTES'  : ''} + miosix_cskyv2_def
-  hd2_blink_args = []
-  foreach k, v : hd2_blink_def
-    if v == ''
-      hd2_blink_args += '-D@0@'.format(k)
-    else
-      hd2_blink_args += '-D@0@=@1@'.format(k, v)
-    endif
-  endforeach
-  executable('miosix_hd2_blink',
-             sources             : hd2_blink_src,
-             include_directories : hd2_blink_inc,
-             c_args              : hd2_blink_args,
-             cpp_args            : hd2_blink_args,
-             link_args           : ['-Wl,-T../platform/mcu/CSKY_V2/linker_script_miosix.ld'])
-endif
-
 ##
 ## ---------------------------- Compilation targets ----------------------------
 ##
@@ -1054,17 +938,9 @@ targets = [
     'load_addr': '0x0800C000',
     'cpu'      : 'cm4'
   },
-  {
-    'name'     : 'hd2',
-    'opts'     : hd2_opts,
-    'flashable': false,
-    'wrap'     : '',
-    'load_addr': '0x0300d000',
-    'cpu'      : 'csky'
-  },
 ]
 
-radio_tool  = find_program('radio_tool',                       required:false, disabler:true)
+radio_tool  = find_program('radio_tool')
 bin2sgl     = find_program('scripts/bin2sgl.py',               required:false, disabler:true)
 objcopy     = find_program('objcopy',                          required:false, disabler:true)
 gd77_loader = find_program('scripts/gd-77_firmware_loader.py', required:false, disabler:true)
@@ -1076,7 +952,6 @@ cs7000_wrap = find_program('scripts/cs7000_wrap.py',           required:false, d
 
 cm4_targets = []
 cm7_targets = []
-csky_targets = []
 linux_targets = []
 
 foreach t : targets
@@ -1217,8 +1092,6 @@ foreach t : targets
       cm4_targets += exe
     elif t['cpu'] == 'cm7'
       cm7_targets += exe
-    elif t['cpu'] == 'csky'
-      csky_targets += exe
     elif t['cpu'] == 'linux'
       linux_targets += exe
     endif
@@ -1228,9 +1101,6 @@ endforeach
 
 cm4 = alias_target('cm4', cm4_targets)
 cm7 = alias_target('cm7', cm7_targets)
-if csky_targets.length() > 0
-  csky = alias_target('csky', csky_targets)
-endif
 linux = alias_target('linux', linux_targets)
 
 ##

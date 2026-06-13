@@ -15,13 +15,6 @@
 #include "emulator/sdl_engine.h"
 #endif
 
-#ifndef PLATFORM_HD2
-/* HD2 supplies its own main() in platform/targets/HD2/main.c during
- * the first bring-up phase -- it bypasses openrtx_init() until the
- * driver stubs for display/keyboard/threads/UI/voice prompts have
- * working HD2-specific implementations.  Once they do, this ifdef
- * guard goes away and HD2 joins the standard flow.
- */
 int main(void)
 {
     // MD-9600 does not have a proper power on/off mechanism and the MCU is
@@ -52,4 +45,3 @@ int main(void)
     pthread_join(openrtx_thread, NULL);
 #endif
 }
-#endif /* !PLATFORM_HD2 */

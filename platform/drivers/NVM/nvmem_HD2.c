@@ -49,8 +49,8 @@
  * sector at 0x00FFF000 -- chosen against the now-known VENDOR flash map
  * (see that file's header).  The old fixed slots this file used
  * (0x10000 / 0x11000) were inside an UNPROVEN gap of the vendor layout
- * and are gone.  Both HD2 builds (meson superloop + threaded CMake)
- * compile nvmem_settings_HD2.c for that half of interfaces/nvmem.h.
+ * and are gone.  nvmem_settings_HD2.c implements that half of
+ * interfaces/nvmem.h.
  */
 
 #include "interfaces/nvmem.h"

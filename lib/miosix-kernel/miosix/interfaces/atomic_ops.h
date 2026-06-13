@@ -162,8 +162,6 @@ inline void *atomicFetchAndIncrement(void * const volatile * p, int offset,
 #include "core/atomic_ops_impl_cortexMx.h"
 #elif defined(_ARCH_CORTEXM0)
 #include "core/atomic_ops_impl_cortexM0.h"
-#elif defined(_ARCH_CSKYV2)
-#include "core/atomic_ops_impl_cskyv2.h"
 #else
 #error "No atomic ops for this architecture"
 #endif

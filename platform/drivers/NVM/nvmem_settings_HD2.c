@@ -5,12 +5,11 @@
  *
  * Persistent OpenRTX settings + last-VFO storage for the Ailunce HD2
  * (Dahua HR_C7000, CK803S), on the external Winbond W25Q512 SPI-NOR
- * flash (GPIOA bit-bang bus, drivers/SPI/spi_hd2.c).
+ * flash (drivers/SPI/spi_hd2.c, HW SPI0 by default).
  *
- * Used by BOTH HD2 builds (meson superloop `hd2` target and the
- * threaded CMake `openrtx_hd2` app): it implements the settings/VFO
- * half of interfaces/nvmem.h.  The codeplug half (cps_io) stays in
- * nvmem_HD2.c (superloop) / cps_io_stub.c (threaded).
+ * Implements the settings/VFO half of interfaces/nvmem.h for the
+ * threaded `openrtx_hd2` app; the codeplug half (cps_io) lives in
+ * nvmem_HD2.c.
  *
  * ==================================================================
  *  Flash sector choice -- HD2_SETT_SECTOR = 0x00FFF000 (4 kB)

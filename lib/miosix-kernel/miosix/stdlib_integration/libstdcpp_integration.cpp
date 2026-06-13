@@ -128,18 +128,12 @@ void unexpected() noexcept { _exit(1); } //Since GCC 9.2.0
  * This one comes from thread.cc, the need to call the class destructor makes it
  * call __cxa_end_cleanup which pulls in exception code.
  */
-#ifdef _GLIBCXX_HAS_GTHREADS
-// Only present when libstdc++ was built with gthreads (std::thread support).
-// The Xuantie CSKY libstdc++ is built WITHOUT gthreads, so std::thread::_State
-// does not exist; we don't use std::thread on HD2 (OpenRTX uses pthreads /
-// miosix::Thread), so guard this bridge out. (HD2 CSKY port.)
 extern "C" void* execute_native_thread_routine(void* __p)
 {
     thread::_State_ptr __t{ static_cast<thread::_State*>(__p) };
     __t->_M_run();
     return nullptr;
 }
-#endif //_GLIBCXX_HAS_GTHREADS
 } //namespace std
 #endif
 
