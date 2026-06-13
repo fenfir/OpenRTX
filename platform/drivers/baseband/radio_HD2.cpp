@@ -941,6 +941,30 @@ extern "C" void hd2_at1846s_write(uint8_t reg, uint16_t val)
 }
 
 /*
+ * VOX detector control over the proven bit-bang path (the AT1846S class i2c
+ * reads are flaky in the live loop -- see the q/Q caution below).  Detect-
+ * during-RX mode: reg 0x64 open/shut thresholds + reg 0x30 bit4 vox_on; result
+ * in reg 0x1C bit1 (vox_cmp).  Used by hd2_rtx.c's VOX key path.
+ */
+extern "C" void hd2_vox_enable(uint8_t thHigh, uint8_t thLow)
+{
+    if(g_rf_freeze != 0u) return;
+    at1846s_write_reg(0x64, (uint16_t)(((thHigh & 0x7F) << 7) | (thLow & 0x7F)));
+    at1846s_write_reg(0x30, (uint16_t)(at1846s_read_reg(0x30) | 0x0010u));
+}
+extern "C" void hd2_vox_disable(void)
+{
+    if(g_rf_freeze != 0u) return;
+    at1846s_write_reg(0x30, (uint16_t)(at1846s_read_reg(0x30) & ~0x0010u));
+}
+extern "C" bool hd2_vox_detected(void)
+{
+    if(g_rf_freeze != 0u) return false;
+    if((at1846s_read_reg(0x30) & 0x0010u) == 0u) return false;   // vox_on off
+    return ((at1846s_read_reg(0x1C) & 0x0002u) != 0u);           // vox_cmp
+}
+
+/*
  * One-shot full AT1846S RX bring-up from firmware (loader op 'I', at_reinit):
  * chip init() (vendor sequence + GDx supplement; ~700 ms of calibration
  * delays -- BLOCKS the calling diag thread that long) + FM filter bank 0 +
