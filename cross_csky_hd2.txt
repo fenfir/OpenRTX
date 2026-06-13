@@ -1,0 +1,88 @@
+# !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
+# Active HD2/CSKY V2 OpenRTX bring-up; toolchain wiring is settled but
+# the target as a whole is not production-ready.  See memory
+# project-hd2-openrtx-boots and project-hd2-v213-mmio-snapshot.
+#
+# Meson cross file for the Ailunce HD2 (HR_C7000 / CSKY V2 ck803s).
+#
+# Companion to cross_cm4.txt and cross_cm7.txt.  Mirror those files'
+# structure so they all build with the same `meson setup --cross-file`
+# pattern.
+#
+# Toolchain origin: see memory project-hd2-csky-toolchain.  The
+# csky-unknown-elf-* binaries live in the dev container at
+# /workspaces/hd2-clean/vendor/toolchain-build/build-gcc-csky-unknown-elf/
+# Xuantie-800-gcc-elf-newlib-x86_64/bin/, which is on PATH via
+# .devcontainer/Dockerfile (ENV PATH).
+#
+# Things deliberately different from cross_cm4.txt:
+#   - no -mfloat-abi/-mfpu     ck803s has no FPU
+#   - no `-mthumb`              CSKY V2 instead of ARM Thumb-2
+#   - no `-lstdc++`             newlib only; libstdc++ not built yet
+#   - `c_link_args` keeps `-nostartfiles` because OpenRTX's HD2 target
+#     supplies its own crt0 in platform/mcu/CSKY_V2/.
+#   - `host_machine.cpu_family = 'csky'` is what meson and gcc both use
+
+[binaries]
+c       = 'csky-unknown-elf-gcc'
+cpp     = 'csky-unknown-elf-g++'
+ld      = 'csky-unknown-elf-ld'
+ar      = 'csky-unknown-elf-ar'
+as      = 'csky-unknown-elf-as'
+size    = 'csky-unknown-elf-size'
+objdump = 'csky-unknown-elf-objdump'
+objcopy = 'csky-unknown-elf-objcopy'
+strip   = 'csky-unknown-elf-strip'
+gdb     = 'csky-unknown-elf-gdb'
+
+[built-in options]
+c_args      = [
+               '-D_DEFAULT_SOURCE=1',
+               '-ffunction-sections',
+               '-fdata-sections',
+               '-Wall',
+               '-Werror=return-type',
+               '-g',
+               '-mcpu=ck803',
+               '-EL',
+               '-Os',
+              ]
+
+cpp_args    = [
+               '-D_DEFAULT_SOURCE=1',
+               '-ffunction-sections',
+               '-fdata-sections',
+               '-Wall',
+               '-Werror=return-type',
+               '-g',
+               '-fno-exceptions',
+               '-fno-rtti',
+               '-D__NO_EXCEPTIONS',
+               '-std=c++14',
+               '-mcpu=ck803',
+               '-EL',
+               '-Os',
+              ]
+
+c_link_args = [
+               '-mcpu=ck803',
+               '-EL',
+               '-ffunction-sections',
+               '-fdata-sections',
+               '-Wl,--gc-sections',
+               '-Wl,-Map,openrtx_hd2.map',
+               '-Wl,--warn-common',
+               '-Wl,--print-memory-usage',
+               '-nostartfiles',
+               '-lc',
+               '-lm',
+               '-lgcc',
+              ]
+
+cpp_link_args = c_link_args
+
+[host_machine]
+system     = 'none'
+cpu_family = 'csky'
+cpu        = 'ck803'
+endian     = 'little'
