@@ -40,6 +40,16 @@ typedef struct
 
     bool     toneEn;
 
+    /* HD2 analog-FM extensions (see ToneType in cps.h).  rxTone/txTone above
+     * carry a CTCSS frequency (0.1 Hz) when the type is CTCSS, or a DCS octal
+     * code value (e.g. 0023 -> 19) when the type is DCS normal/inverted. */
+    uint8_t  rxToneType   : 2,  /**< RX tone kind (enum ToneType)        */
+             txToneType   : 2,  /**< TX tone kind (enum ToneType)        */
+             toneBurst1750: 1,  /**< Send 1750 Hz burst on FM TX key-up  */
+             tailElim     : 1,  /**< CTCSS/DCS tail elimination on dekey */
+             _tonepad     : 2;
+    uint8_t  vox;               /**< VOX level (0 = off, 1..5)           */
+
     uint8_t  can      : 4,  /**< M17 Channel Access Number     */
              canRxEn  : 1,  /**< M17 Check CAN on RX           */
              _unused  : 3;

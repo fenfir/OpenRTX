@@ -76,10 +76,17 @@ void *ui_threadFunc(void *arg)
             rtx_cfg.txPower     = state.channel.power;
             rtx_cfg.sqlLevel    = state.settings.sqlLevel;
             rtx_cfg.rxToneEn    = state.channel.fm.rxToneEn;
-            rtx_cfg.rxTone      = ctcss_tone[state.channel.fm.rxTone];
+            rtx_cfg.rxToneType  = state.channel.fm.rxToneType;
+            rtx_cfg.rxTone      = (state.channel.fm.rxToneType == TONE_CTCSS)
+                                ? ctcss_tone[state.channel.fm.rxTone]
+                                : dcs_code[state.channel.fm.rxTone];
             rtx_cfg.txToneEn    = state.channel.fm.txToneEn;
-            rtx_cfg.txTone      = ctcss_tone[state.channel.fm.txTone];
+            rtx_cfg.txToneType  = state.channel.fm.txToneType;
+            rtx_cfg.txTone      = (state.channel.fm.txToneType == TONE_CTCSS)
+                                ? ctcss_tone[state.channel.fm.txTone]
+                                : dcs_code[state.channel.fm.txTone];
             rtx_cfg.toneEn      = state.tone_enabled;
+            rtx_cfg.vox         = state.settings.voxLevel;
 
             // Enable Tx if channel allows it and we are in UI main screen
             rtx_cfg.txDisable = state.channel.rx_only || state.txDisable;

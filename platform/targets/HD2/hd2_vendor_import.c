@@ -47,15 +47,36 @@
  * "no tone" (DCS support is a follow-up that needs the core tone model
  * extended -- stock fmInfo_t only indexes the CTCSS table).
  */
-static void translate_tone(const uint8_t t[2], uint8_t *en, uint8_t *idx)
+static void translate_tone(const uint8_t t[2], uint8_t *en, uint8_t *idx, uint8_t *type)
 {
     *en = 0;
     *idx = 0;
+    *type = TONE_CTCSS;
 
     uint16_t raw = (uint16_t) t[0] | ((uint16_t) t[1] << 8);
-    if(raw == 0xFFFFu) return;            /* no tone                 */
-    if((t[1] & 0x80u) != 0u) return;      /* DCS -- follow-up        */
+    if(raw == 0xFFFFu) return;            /* no tone */
 
+    if((t[1] & 0x80u) != 0u)
+    {
+        /* DCS: high byte 0x80=normal, 0xC0=inverted; the octal code digits are
+         * (t[1]&0xF) hundreds, (t[0]>>4) tens, (t[0]&0xF) ones. */
+        uint16_t code = (uint16_t)((t[1] & 0x0Fu) * 64u
+                                 + ((t[0] >> 4) & 0x0Fu) * 8u
+                                 + ( t[0]       & 0x0Fu));
+        for(uint8_t i = 0; i < DCS_CODE_NUM; ++i)
+        {
+            if(dcs_code[i] == code)
+            {
+                *en = 1;
+                *idx = i;
+                *type = ((t[1] & 0xC0u) == 0xC0u) ? TONE_DCS_I : TONE_DCS_N;
+                return;
+            }
+        }
+        return;                           /* unrecognised DCS code: disabled */
+    }
+
+    /* CTCSS: 4 BCD-in-hex nibbles -> frequency in 0.1 Hz units. */
     uint16_t freq = ((raw >> 12) & 0xFu) * 1000u
                   + ((raw >>  8) & 0xFu) *  100u
                   + ((raw >>  4) & 0xFu) *   10u
@@ -105,13 +126,15 @@ static void translate_channel(const hd2_vendor_channel_t *v, channel_t *o)
     }
     else
     {
-        uint8_t en, idx;
-        translate_tone(v->rx_tone, &en, &idx);
-        o->fm.rxToneEn = en;
-        o->fm.rxTone   = idx;
-        translate_tone(v->tx_tone, &en, &idx);
-        o->fm.txToneEn = en;
-        o->fm.txTone   = idx;
+        uint8_t en, idx, type;
+        translate_tone(v->rx_tone, &en, &idx, &type);
+        o->fm.rxToneEn   = en;
+        o->fm.rxTone     = idx;
+        o->fm.rxToneType = type;
+        translate_tone(v->tx_tone, &en, &idx, &type);
+        o->fm.txToneEn   = en;
+        o->fm.txTone     = idx;
+        o->fm.txToneType = type;
     }
 }
 

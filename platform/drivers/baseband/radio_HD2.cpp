@@ -152,7 +152,9 @@ void radio_setOpmode(const enum opmode mode)
 bool radio_checkRxDigitalSquelch()
 {
     // CTCSS/DCS tone detection via AT1846S reg 0x3A/0x1C.
-    return at1846s.rxCtcssDetected();
+    if(config->rxToneType == TONE_CTCSS)
+        return at1846s.rxCtcssDetected();
+    return at1846s.rxCdcssDetected(config->rxToneType == TONE_DCS_I);
 }
 
 void radio_enableAfOutput()
@@ -187,7 +189,12 @@ void radio_enableRx()
 
     // Enable RX-side CTCSS/DCS detection if the channel requests it.
     if(config->rxToneEn)
-        at1846s.enableRxCtcss(config->rxTone);
+    {
+        if(config->rxToneType == TONE_CTCSS)
+            at1846s.enableRxCtcss(config->rxTone);
+        else
+            at1846s.enableRxCdcss(config->rxTone, config->rxToneType == TONE_DCS_I);
+    }
 
     // Apply the AT1846S RX-audio (AF-DSP) config ONCE here -- the heavy I2C
     // burst belongs at RX entry, not on every squelch crossing.  Then release
@@ -302,6 +309,18 @@ void radio_enableTx()
         hd2_at1846s_write(0x0a, (uint16_t)((padrv << 11) | 0x0420u));
     }
 
+    // TX FM deviation (reg 0x59 -- shared with the RX mixer gain, so it is
+    // restored in radio_disableRtx()).  Pick by bandwidth and whether a
+    // sub-audio tone is active (the low 6 bits set the CTCSS/DCS deviation).
+    {
+        uint16_t dev59;
+        if(config->bandwidth == BW_12_5)
+            dev59 = config->txToneEn ? 0x0B11u : 0x0C90u;
+        else
+            dev59 = config->txToneEn ? 0x0C62u : 0x0C50u;
+        hd2_at1846s_write(0x59, dev59);
+    }
+
     // AT1846S: TX-side AF-DSP ctrl, then key the carrier (exact words
     // from the verified bring-up sequence), then the vendor's
     // tx_pa_enable: reg 0x30 |= 0x80.  The datasheet calls bit7 "mute",
@@ -312,11 +331,19 @@ void radio_enableTx()
     hd2_at1846s_write(0x30, 0x4046u);          // tx_on
     hd2_at1846s_write(0x30, 0x40c6u);          // + bit7: PA on (vendor tx_pa_enable)
 
-    // Sub-audio CTCSS encode: the AT1846S sums its own CTCSS generator into the
-    // TX modulation (reg 0x4A freq + reg 0x4E enable), alongside the C7000 voice
-    // modulation on the MOD pins.  disableCtcss() in radio_disableRtx() clears it.
+    // Sub-audio encode: the AT1846S sums its own CTCSS/CDCSS generator into the
+    // TX modulation, alongside the C7000 voice modulation on the MOD pins.
+    // disableCtcss/disableCdcss() in radio_disableRtx() clears it.  Tail
+    // elimination (reverse burst) is armed here and fired on dekey.
     if(config->txToneEn)
-        at1846s.enableTxCtcss(config->txTone);
+    {
+        if(config->txToneType == TONE_CTCSS)
+            at1846s.enableTxCtcss(config->txTone);
+        else
+            at1846s.enableTxCdcss(config->txTone, config->txToneType == TONE_DCS_I);
+        if(config->tailElim)
+            at1846s.setTxTailShift(AT1846S::TAIL_180);
+    }
 
     radioStatus = TX;
 }
@@ -346,11 +373,13 @@ void radio_disableRtx()
         SOCSYS_FM_PTT     = 0u;
         SOCSYS_WORK_MODE &= ~WORK_MODE_FM_MOD;
         hd2_at1846s_write(0x40, 0x0031u);      // RX-side AF-DSP ctrl value
+        hd2_at1846s_write(0x59, 0x0b90u);      // restore RX mixer gain (TX set 0x59 deviation)
     }
 
     // Drop both RX and TX on the chip side and silence any tone output.
     at1846s.disableTone();
     at1846s.disableCtcss();
+    at1846s.disableCdcss();
     at1846s.setFuncMode(AT1846S_FuncMode::OFF);
     radioStatus = OFF;
 }
@@ -387,6 +416,12 @@ void radio_updateConfiguration()
             default:
                 break;
         }
+
+        // Drive the AT1846S RSSI squelch threshold (reg 0x49) from the
+        // squelch level.  Applied AFTER setBandwidth (0x49 is not bank-managed,
+        // so it survives the band switch).  The software RSSI window in
+        // hd2_rtx.c remains the audio-gate authority (de-thrash hysteresis).
+        at1846s.setSquelchLevel(config->sqlLevel);
     }
 
     /*

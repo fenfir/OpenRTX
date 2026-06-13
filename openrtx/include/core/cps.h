@@ -90,16 +90,38 @@ enum CTCSSfreq
 extern const uint16_t ctcss_tone[];
 
 /**
+ * Sub-audio tone kind for fmInfo_t::{rx,tx}ToneType.  CTCSS is the default (0)
+ * so existing CTCSS-only codeplugs keep their meaning; DCS adds normal/inverted.
+ * For CTCSS the tone index points into ctcss_tone[]; for DCS into dcs_code[].
+ */
+enum ToneType
+{
+    TONE_CTCSS = 0,   //< CTCSS sub-audio tone (index -> ctcss_tone[])
+    TONE_DCS_N = 1,   //< DCS, normal  polarity (index -> dcs_code[])
+    TONE_DCS_I = 2,   //< DCS, inverted polarity
+};
+
+/**
+ * Count and table of standard DCS codes (octal values, e.g. 0023 -> 19),
+ * mirroring ctcss_tone[].  Display as octal ("%03o" -> "023").
+ */
+#define DCS_CODE_NUM 105
+extern const uint16_t dcs_code[DCS_CODE_NUM];
+
+/**
  * Data structure defining an analog-specific channel information such as tones.
  */
 typedef struct
 {
     uint8_t rxToneEn : 1,   //< RX CTC/DCS tone enable
-            rxTone   : 7;   //< RX CTC/DCS tone index
+            rxTone   : 7;   //< RX tone index (ctcss_tone[] or dcs_code[] by type)
     uint8_t txToneEn : 1,   //< TX CTC/DCS tone enable
-            txTone   : 7;   //< TX CTC/DCS tone index
+            txTone   : 7;   //< TX tone index (ctcss_tone[] or dcs_code[] by type)
+    uint8_t rxToneType : 2, //< RX tone kind (enum ToneType)
+            txToneType : 2, //< TX tone kind (enum ToneType)
+            _unused    : 4;
 }
-__attribute__((packed)) fmInfo_t; // 2B
+__attribute__((packed)) fmInfo_t; // 3B
 
 
 
