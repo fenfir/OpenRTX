@@ -16,7 +16,7 @@
  * register values and don't fight the in-flight FM-RX-audio task #C2):
  *   - The codec init + socsys audio-gate sequence (DAC/ADC/VOICE_PATH/LINEOUT/
  *     WORK_MODE/AF_GATE/MODEM_RXDP) was captured LIVE from a vendor unit playing
- *     FM and lives in radio_test_HD2.cpp::hd2_audio_out_warm().  We CALL that
+ *     FM and lives in radio_HD2.cpp::hd2_audio_out_warm().  We CALL that
  *     rather than re-hardcoding the magic constants here.
  *   - The AT1846S RX-audio chip-side mute (reg 0x30 bit7) is released via the
  *     radio.h hook radio_enableAfOutput()/disableAfOutput().
@@ -31,10 +31,10 @@
 #include "hd2_regs.h"
 
 /* Codec + socsys audio-gate warm-up (HW-verified constants live in
- * radio_test_HD2.cpp).  Idempotent: a static latch makes repeat calls free. */
+ * radio_HD2.cpp).  Idempotent: a static latch makes repeat calls free. */
 extern void hd2_audio_out_warm(void);
 
-/* RF-freeze flag (radio_test_HD2.cpp, loader op 'z').  While set, the
+/* RF-freeze flag (radio_HD2.cpp, loader op 'z').  While set, the
  * audio matrix must not rewrite the amp/route GPIOs (PTB4/PTB10) that a
  * host-side experiment may be holding -- audio_connect/disconnect become
  * no-ops.  (rtx_task's squelch gate is also frozen upstream in hd2_rtx.c;

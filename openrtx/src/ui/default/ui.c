@@ -477,7 +477,7 @@ static void _ui_calculateLayout(layout_t *layout)
     memcpy(layout, &new_layout, sizeof(layout_t));
 }
 
-/* HD2 FM broadcast radio: controls live in hd2_fm_probe.cpp / radio_test_HD2.cpp.
+/* HD2 FM broadcast radio: controls live in hd2_fm_broadcast.cpp / radio_HD2.cpp.
  * g_fm_active gates the FM worker thread; g_fm_test_freq is the tune target (Hz);
  * g_fm_rssi packs the RDA5802E status: low byte = RSSI[6:0], bit8 = STC (lock). */
 extern volatile uint32_t g_fm_active;

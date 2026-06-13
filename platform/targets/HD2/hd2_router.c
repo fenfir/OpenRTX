@@ -7,7 +7,7 @@
  *
  * Drives the audio_HD2 path matrix (interfaces/audio.h) and pokes the named
  * HD2 routing/power/codec registers via the hd2_regs.h macros.  The AT1846S RF
- * path goes through the loader's proven C-linkage helpers (radio_test_HD2.cpp).
+ * path goes through the loader's proven C-linkage helpers (radio_HD2.cpp).
  * The UART output for the dump reuses main.c's puts_/put_hex* (de-static'd).
  */
 
@@ -18,7 +18,7 @@
 
 /* --- externs ----------------------------------------------------------- */
 
-/* AT1846S register access (radio_test_HD2.cpp; same path as loader 'q'/'Q').
+/* AT1846S register access (radio_HD2.cpp; same path as loader 'q'/'Q').
  * Present in both the bare-loader and threaded builds via ORTX_RADIO. */
 extern uint16_t hd2_at1846s_read(uint8_t reg);
 extern void     hd2_at1846s_write(uint8_t reg, uint16_t val);

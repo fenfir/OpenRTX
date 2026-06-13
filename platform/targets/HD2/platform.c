@@ -641,11 +641,11 @@ void platform_ledOff(led_t led)
 /* PWM_CH1_BASE (audio), PWM_TIMER_HZ, DIPLEX0_AUDIO_MUTE and
  * SOCSYS_IO_DIPLEX0 are defined in hd2_regs.h. */
 
-/* Codec audio-output warm-up (defined in radio_test_HD2.cpp); brings the codec
+/* Codec audio-output warm-up (defined in radio_HD2.cpp); brings the codec
  * DAC->lineout->speaker path up once so the PWM-ch1 beep is audible on this unit. */
 void hd2_audio_out_warm(void);
 
-/* RF-freeze flag (radio_test_HD2.cpp, loader op 'z').  While set, beeps must
+/* RF-freeze flag (radio_HD2.cpp, loader op 'z').  While set, beeps must
  * not rewrite the audio GPIOs (PTB4/PTB10) or the DIPLEX0 PWM-audio mute that
  * a host-side experiment may be holding: beepStart becomes a no-op and
  * beepStop only stops the PWM channel (no GPIO/diplex rewrite). */

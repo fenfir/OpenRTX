@@ -14,7 +14,7 @@
  *
  * Register model (RDA5802E): 16-bit registers, MSB first; writes always start
  * at reg 0x02 and auto-increment, reads start at reg 0x0A (no random access at
- * 0x20).  See fm_broadcast_HD2.c.  (scripts/labels/fm_broadcast.py mis-modelled
+ * 0x20).  See RDA5802E_HD2.c.  (scripts/labels/fm_broadcast.py mis-modelled
  * this as 8-bit [reg][val] writes -- ignore that; the .c has the real decode.)
  *
  * GPIO control (LIVE-VERIFIED 2026-06-08, before/after MMIO diff while playing

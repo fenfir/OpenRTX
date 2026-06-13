@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * Broadcast-FM tuner driver for the Ailunce HD2 (HR_C7000).  See
- * fm_broadcast_HD2.h for the chip overview.
+ * RDA5802E_HD2.h for the chip overview.
  *
  * CHIP: RDA Microelectronics RDA5802E (single-chip broadcast-FM tuner),
  * confirmed against vendor/RDA5802E-RDA.pdf.  It sits on the AT1846S's GPIOA
@@ -30,7 +30,7 @@
  * AUDIO_ROUTE_BIT=PTB10 (LOW=audio->speaker).  See hd2_regs.h.
  */
 
-#include "drivers/baseband/fm_broadcast_HD2.h"
+#include "drivers/baseband/RDA5802E_HD2.h"
 
 #include "drivers/i2c_csky.h"
 #include "interfaces/delays.h"
