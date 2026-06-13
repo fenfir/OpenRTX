@@ -1,4 +1,3 @@
-# !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
 # Active HD2/CSKY V2 OpenRTX bring-up; toolchain wiring is settled but
 # the target as a whole is not production-ready.  See memory
 # project-hd2-openrtx-boots and project-hd2-v213-mmio-snapshot.

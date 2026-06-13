@@ -3,7 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
  * No-op pthread_mutex stubs for the HD2 bring-up build.
  *
  * OpenRTX's peripherals/spi.h inlines call pthread_mutex_lock/unlock

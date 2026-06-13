@@ -3,8 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
- *
  * Loader command module interface.  The peek/poke loader's UART command
  * dispatch (R/W/P/Z/G/T/B/K/k/J/j/D/V/l/8/t/i/N/n/S/E/U/?) is factored behind this
  * tiny interface so it can run from BOTH the bare loader loop (main.c)

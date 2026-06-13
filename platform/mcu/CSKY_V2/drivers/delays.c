@@ -3,7 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
  * Active HD2/CSKY V2 bring-up.
  *
  * Timer-backed delays + monotonic system tick for the HD2 (HR_C7000).

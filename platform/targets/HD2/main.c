@@ -3,8 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
- *
  * HD2 OpenRTX bring-up main with a dynamic peek/poke loader.  Saves
  * re-flash cycles -- once this build is on the radio we can iterate
  * on chip-init experiments by writing MMIO over UART instead of

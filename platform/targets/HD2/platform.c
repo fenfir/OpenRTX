@@ -3,8 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
- *
  * HD2 OpenRTX bring-up.  Most platform.h functions are stubs or use
  * mid-pack defaults until the ADC/battery driver lands.  The chip-
  * level writes in platform_init() are derived from a live dbgshell

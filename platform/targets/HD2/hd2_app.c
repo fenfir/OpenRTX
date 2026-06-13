@@ -3,8 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
- *
  * Cooperative OpenRTX UI superloop for the HD2 bring-up.
  *
  * This is the "make it work" half of the loader->app switch (the

@@ -3,8 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
- *
  * HD2 backlight driver.  Drives the LCD backlight LED via PWM ch0
  * (HR_C7000 PWM block at MMIO 0x140c0000).  Mirrors the vendor V2.1.3
  * sequence from `pwm_channel_start(0, 10000, duty)` -- live-verified

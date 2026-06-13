@@ -3,7 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
  * Active HD2 bring-up; pin assignments are partial / tentative.
  */
 

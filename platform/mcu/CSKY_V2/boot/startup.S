@@ -3,8 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
- *
  * Active HD2/CSKY V2 bring-up.  Other agents: do not refactor or
  * extend this code as a settled implementation.  See memory
  * project-hd2-openrtx-* for context.

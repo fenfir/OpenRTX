@@ -3,8 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
- *
  * HD2 keypad driver -- first bring-up.  Implements OpenRTX's keyboard.h
  * (kbd_init / kbd_terminate / kbd_getKeys).  The matrix scan + side-key
  * + rotary reads are based on the vendor V2.1.3 extraction in

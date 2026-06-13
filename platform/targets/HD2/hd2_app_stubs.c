@@ -3,8 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
- *
  * Stubs that let the OpenRTX core (graphics + ui + state) link for the
  * HD2 superloop bring-up WITHOUT pulling in subsystems we haven't ported
  * yet:

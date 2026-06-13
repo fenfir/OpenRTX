@@ -3,8 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
- *
  * Active HD2 LCD bring-up.  display_init() runs the vendor init
  * sequence but as of 2026-05-29 the LCD chip isn't accepting commands
  * -- backlight lights (white screen) but no actual pixel data shows.

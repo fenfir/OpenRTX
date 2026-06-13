@@ -3,8 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
- *
  * Minimal periodic-timer-interrupt bring-up test for the HD2
  * (HR_C7000 / CK803S).  This is the deciding experiment for the
  * loader->OpenRTX-app switch: can we get a clean periodic IRQ after the

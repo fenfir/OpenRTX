@@ -3,8 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
- *
  * C-SKY V2 interrupt entry stub for the periodic-IRQ bring-up test
  * (irq_test.c).  GCC's __attribute__((interrupt)) is silently ignored by
  * our csky toolchain (it emits a normal `jmp r15` return with no context

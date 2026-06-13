@@ -3,7 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
  * Active HD2/CSKY V2 bring-up; layout is tentative.  See memory
  * project-hd2-openrtx-boots + project-hd2-v213-mmio-snapshot.
  *

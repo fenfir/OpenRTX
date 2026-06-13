@@ -3,7 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
  * Active HD2 bring-up; will fill in as drivers come online.
  *
  * Definitions of the const driver structs declared in hwconfig.h.

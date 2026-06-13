@@ -3,7 +3,6 @@
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * !!! WORK IN PROGRESS -- DO NOT CONSUME !!!
  * Bring-up GPIO driver for the HR_C7000 CSKY V2 SoC.  Today this is a
  * minimal GPIOC-only port (the bank that carries the W25Q SPI flash
  * and LCD bus); GPIOA/B will join as drivers need them.
