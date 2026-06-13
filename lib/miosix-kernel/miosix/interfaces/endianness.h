@@ -30,6 +30,8 @@
 #elif defined(_ARCH_CORTEXM0) || defined(_ARCH_CORTEXM3) \
    || defined(_ARCH_CORTEXM4) || defined(_ARCH_CORTEXM7)
 #include "core/endianness_impl_cortexMx.h"
+#elif defined(_ARCH_CSKYV2)
+#include "core/endianness_impl_cskyv2.h"
 #else
 #error "No endianness code for this architecture"
 #endif

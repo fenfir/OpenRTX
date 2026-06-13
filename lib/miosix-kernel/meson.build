@@ -37,3 +37,13 @@ miosix_cm7_src = miosix_src + ['lib/miosix-kernel/miosix/arch/cortexM7/portabili
                                'lib/miosix-kernel/miosix/arch/common/core/mpu_cortexMx.cpp',
                                'lib/miosix-kernel/miosix/arch/common/core/interrupts_cortexMx.cpp']
 miosix_cm7_def = miosix_def + {'_ARCH_CORTEXM7' : ''}
+
+
+##
+## T-Head CK803S (C-SKY V2) -- Ailunce HD2.  Uses our own PIC-based
+## cskyv2_vectors.S in place of the ARM-NVIC interrupts_cortexMx.cpp.
+##
+miosix_cskyv2_inc = miosix_inc + ['lib/miosix-kernel/miosix/arch/cskyv2']
+miosix_cskyv2_src = miosix_src + ['lib/miosix-kernel/miosix/arch/cskyv2/portability.cpp',
+                                  'lib/miosix-kernel/miosix/arch/cskyv2/cskyv2_vectors.S']
+miosix_cskyv2_def = miosix_def + {'_ARCH_CSKYV2' : ''}
