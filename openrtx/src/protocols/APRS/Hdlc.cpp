@@ -26,6 +26,7 @@ HdlcDecoder::HdlcDecoder()
     reset();
     flagsSeen_ = 0;
     maxLen_    = 0;
+    rawLen_    = 0;
 }
 
 void HdlcDecoder::reset()
@@ -53,6 +54,13 @@ void HdlcDecoder::addDataBit(int bit)
 
 bool HdlcDecoder::endFrame(Frame& out)
 {
+    // Keep the longest frame seen (FCS pass or fail) for host diagnosis.
+    if(flen_ > rawLen_)
+    {
+        for(int i = 0; i < flen_; ++i) raw_[i] = frame_[i];
+        rawLen_ = flen_;
+    }
+
     bool got = false;
     if(flen_ >= 4)
     {

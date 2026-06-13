@@ -54,6 +54,10 @@ public:
     int flagsSeen() const { return flagsSeen_; }
     /// Largest frame assembled, in bytes (bring-up diagnostic).
     int maxFrameLen() const { return maxLen_; }
+    /// Longest frame assembled between flags, FCS pass OR fail (bring-up
+    /// diagnostic: lets a host diff a near-miss against the expected bytes).
+    const uint8_t* lastRawFrame() const { return raw_; }
+    int lastRawLen() const { return rawLen_; }
 
 private:
     void addDataBit(int bit);
@@ -69,6 +73,8 @@ private:
     int      flen_;
     int      flagsSeen_;
     int      maxLen_;
+    uint8_t  raw_[MAX_FRAME];   ///< longest assembled frame (diagnostic).
+    int      rawLen_;
 };
 
 } // namespace Aprs

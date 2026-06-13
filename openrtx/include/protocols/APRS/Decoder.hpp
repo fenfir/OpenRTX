@@ -51,6 +51,9 @@ public:
     int flagsSeen() const { return hdlc_.flagsSeen(); }
     /// Largest frame assembled, in bytes (bring-up diagnostic).
     int maxFrameLen() const { return hdlc_.maxFrameLen(); }
+    /// Longest assembled frame's raw bytes (bring-up diagnostic).
+    const uint8_t* lastRawFrame() const { return hdlc_.lastRawFrame(); }
+    int lastRawLen() const { return hdlc_.lastRawLen(); }
 
 private:
     Afsk1200Demodulator demod_;
