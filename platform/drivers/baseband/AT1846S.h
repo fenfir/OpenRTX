@@ -334,6 +334,47 @@ public:
         return ((i2c_readReg16(0x1C) & 0x0002) != 0);           // vox_cmp
     }
 
+    /* ---- DTMF (AT1846S engine, programming guide ch.10) -------------- */
+
+    /** Map an ASCII DTMF digit to its (row,col) tone-pair freqs in Hz.
+     *  Accepts 0-9, A-D (case-insensitive), '*', '#'.  Returns false otherwise. */
+    static inline bool dtmfDigitToTones(char d, uint16_t *row, uint16_t *col)
+    {
+        static const uint16_t rows[4] = { 697, 770, 852, 941 };
+        static const uint16_t cols[4] = { 1209, 1336, 1477, 1633 };
+        int r, c;
+        switch(d)
+        {
+            case '1': r=0;c=0;break; case '2': r=0;c=1;break; case '3': r=0;c=2;break;
+            case '4': r=1;c=0;break; case '5': r=1;c=1;break; case '6': r=1;c=2;break;
+            case '7': r=2;c=0;break; case '8': r=2;c=1;break; case '9': r=2;c=2;break;
+            case '*': r=3;c=0;break; case '0': r=3;c=1;break; case '#': r=3;c=2;break;
+            case 'A': case 'a': r=0;c=3;break; case 'B': case 'b': r=1;c=3;break;
+            case 'C': case 'c': r=2;c=3;break; case 'D': case 'd': r=3;c=3;break;
+            default: return false;
+        }
+        *row = rows[r]; *col = cols[c];
+        return true;
+    }
+
+    /** Map a decoded reg-0x7E[3:0] code to an ASCII digit. */
+    static inline char dtmfCodeToChar(uint8_t code)
+    {
+        static const char tbl[16] = {'0','1','2','3','4','5','6','7',
+                                     '8','9','A','B','C','D','*','#'};
+        return tbl[code & 0x0F];
+    }
+
+    /** Enable DTMF decode on RX (reg 0x7A[15]=1 + detect time 0x18).  NOTE: the
+     *  0x67..0x76 Goertzel coefficients are left at their power-on default
+     *  (tuned for a 12.8/25.6 MHz reference); the HD2 runs 26 MHz, so decode
+     *  reliability must be HW-confirmed (diag 't') -- if poor, reprogram the
+     *  coefficient table with verified 26 MHz values. */
+    inline void dtmfEnableDecode()  { maskSetRegister(0x7A, 0x80FF, 0x8018); }
+    inline bool dtmfDecodeReady()   { return (i2c_readReg16(0x7E) & 0x0010) != 0; }
+    inline char dtmfReadDigit()     { return dtmfCodeToChar((uint8_t)(i2c_readReg16(0x7E) & 0x0F)); }
+    inline void dtmfDisableDecode() { maskSetRegister(0x7A, 0x8000, 0x0000); }
+
     /**
      * Get current RSSI value.
      *
