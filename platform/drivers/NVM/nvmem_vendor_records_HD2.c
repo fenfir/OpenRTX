@@ -9,11 +9,11 @@
  * Records live in the vendor "channels" family-0x31 region.  Physical W25Q
  * byte offset = CPS block_index * 0x400 (validated in nvmem_HD2.c):
  *   priority contacts  block 0x1B84 -> 0x006E1000, 72 B stride, 14 / block
- *   channel slots      block 0x1BCC -> 0x006F3000, 176 B stride, 5 / block,
- *                      first slot at block offset 0x80
- * Within each 0x400 block the records pack from the block base (contacts) or
- * from +0x80 (channels); record N is in block (N / per-block), at the
- * in-block slot (N % per-block).
+ *   channel slots      block 0x1BCC -> 0x006F3000, 176 B stride, contiguous
+ * Contacts pack 14-per-0x400-block from the block base (record N in block
+ * N/14, slot N%14).  Channels do NOT: they form one contiguous 176-byte
+ * array starting at the region's first-block +0x80, straddling block
+ * boundaries (record N at region+0x80+N*176).  See channelAddr().
  *
  * READ-ONLY by design: this surfaces the factory database (e.g. for an
  * import-to-OpenRTX-codeplug feature).  The OpenRTX codeplug (cps_io_HD2.c)
@@ -32,7 +32,6 @@
 #define VND_CONTACT_BASE   0x006E1000u
 #define VND_CONTACT_PERBLK 14u
 #define VND_CHAN_BASE      0x006F3000u
-#define VND_CHAN_PERBLK    5u
 #define VND_CHAN_SLOT0     0x80u        /* first channel slot's in-block offset */
 
 /* ---- block/slot address arithmetic -------------------------------- */
@@ -46,10 +45,16 @@ static uint32_t contactAddr(uint16_t index)
 
 static uint32_t channelAddr(uint16_t index)
 {
-    uint32_t block = index / VND_CHAN_PERBLK;
-    uint32_t slot  = index % VND_CHAN_PERBLK;
-    return VND_CHAN_BASE + block * VND_BLOCK_SIZE +
-           VND_CHAN_SLOT0 + slot * sizeof(hd2_vendor_channel_t);
+    /* Unlike contacts (14 packed per 0x400 block), channel records are stored
+     * CONTIGUOUSLY: a 176-byte stride starting at the region's first-block
+     * +0x80 offset, running straight across the 0x400 block boundaries -- a
+     * single record can straddle two blocks.  Verified against the factory
+     * codeplug and the vendor CPS parser: channel 5 lands at region+0x80+5*0xB0
+     * (block 0's tail, spilling into block 1), NOT block1+0x80.  The earlier
+     * per-block model read a gap for channel 5 and made the importer stop
+     * after the first block. */
+    return VND_CHAN_BASE + VND_CHAN_SLOT0 +
+           (uint32_t) index * sizeof(hd2_vendor_channel_t);
 }
 
 /* ---- public API ---------------------------------------------------- */
