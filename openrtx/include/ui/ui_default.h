@@ -52,6 +52,7 @@ enum uiScreen
     SETTINGS_FM,
     SETTINGS_ACCESSIBILITY,
     SETTINGS_RESET2DEFAULTS,
+    FM_RADIO,            /* HD2: FM broadcast receiver screen (SK2/KEY_F3 toggles it) */
     LOW_BAT
 };
 
@@ -148,7 +149,9 @@ enum settingsM17Items
 enum settingsFMItems
 {
     CTCSS_Tone,
-    CTCSS_Enabled
+    CTCSS_Enabled,
+    Squelch_Level,
+    Bandwidth_Sel
 };
 
 /**

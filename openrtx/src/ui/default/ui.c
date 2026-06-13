@@ -177,7 +177,9 @@ const char * settings_m17_items[] =
 const char* settings_fm_items[] =
 {
     "CTCSS Tone",
-    "CTCSS En."
+    "CTCSS En.",
+    "Squelch",
+    "Bandwidth"
 };
 
 const char * settings_accessibility_items[] =
@@ -473,6 +475,38 @@ static void _ui_calculateLayout(layout_t *layout)
     };
 
     memcpy(layout, &new_layout, sizeof(layout_t));
+}
+
+/* HD2 FM broadcast radio: controls live in hd2_fm_probe.cpp / radio_test_HD2.cpp.
+ * g_fm_active gates the FM worker thread; g_fm_test_freq is the tune target (Hz);
+ * g_fm_rssi packs the RDA5802E status: low byte = RSSI[6:0], bit8 = STC (lock). */
+extern volatile uint32_t g_fm_active;
+extern volatile uint32_t g_fm_test_freq;
+extern volatile uint32_t g_fm_rssi;
+
+static void _ui_drawFMRadio()
+{
+    gfx_clearScreen();
+    point_t title = {0, 20};
+    gfx_print(title, FONT_SIZE_8PT, TEXT_ALIGN_CENTER, color_white, "FM RADIO");
+
+    uint32_t f = g_fm_test_freq;                 /* Hz */
+    point_t fp = {0, 56};
+    gfx_print(fp, FONT_SIZE_12PT, TEXT_ALIGN_CENTER, color_white,
+              "%lu.%01lu MHz",
+              (unsigned long)(f / 1000000u),
+              (unsigned long)((f % 1000000u) / 100000u));
+
+    point_t rp = {0, 86};
+    /* RDA5802E status from the FM worker: low byte = RSSI[6:0] (read reg 0x0B),
+     * bit8 = STC (tune complete / locked). Show the level + an "L" when locked. */
+    gfx_print(rp, FONT_SIZE_8PT, TEXT_ALIGN_CENTER, color_white,
+              "RSSI %lu%s", (unsigned long)(g_fm_rssi & 0xffu),
+              (g_fm_rssi & 0x100u) ? " L" : "");
+
+    point_t hp = {0, 116};
+    gfx_print(hp, FONT_SIZE_6PT, TEXT_ALIGN_CENTER, color_white,
+              "UP/DN tune   SK2/ESC exit");
 }
 
 static void _ui_drawLowBatteryScreen()
@@ -1623,6 +1657,13 @@ void ui_updateFSM(bool *sync_rtx)
                             f1Handled = true;
                         }
                     }
+                    else if(msg.keys & KEY_F3)
+                    {
+                        // SK2: open the FM broadcast radio screen + start RX
+                        ui_state.last_main_state = state.ui_screen;
+                        state.ui_screen = FM_RADIO;
+                        g_fm_active = 1;
+                    }
                     else if(input_isNumberPressed(msg))
                     {
                         // Open Frequency input screen
@@ -1646,6 +1687,25 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                 }
             }
+                break;
+            // FM broadcast radio screen (HD2)
+            case FM_RADIO:
+                if(msg.keys & (KEY_F3 | KEY_ESC))
+                {
+                    // Stop FM RX and return to VFO
+                    g_fm_active = 0;
+                    state.ui_screen = MAIN_VFO;
+                }
+                else if(msg.keys & KEY_UP)
+                {
+                    if(g_fm_test_freq < 108000000u)
+                        g_fm_test_freq += 100000u;   // +0.1 MHz
+                }
+                else if(msg.keys & KEY_DOWN)
+                {
+                    if(g_fm_test_freq > 87500000u)
+                        g_fm_test_freq -= 100000u;   // -0.1 MHz
+                }
                 break;
             // VFO frequency input screen
             case MAIN_VFO_INPUT:
@@ -2494,6 +2554,34 @@ void ui_updateFSM(bool *sync_rtx)
 
                             *sync_rtx = true;
                             break;
+                        case Squelch_Level:
+                            if (msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT)
+                            {
+                                if (state.settings.sqlLevel > 0)
+                                    state.settings.sqlLevel--;
+                            }
+                            else if (msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)
+                            {
+                                if (state.settings.sqlLevel < 15)
+                                    state.settings.sqlLevel++;
+                            } else if (msg.keys & KEY_ENTER) {
+                                ui_state.edit_mode = false;
+                            }
+                            *sync_rtx = true;
+                            break;
+                        case Bandwidth_Sel:
+                            // Only two values (BW_12_5/BW_25) -- any adjust key toggles.
+                            if ((msg.keys & KEY_DOWN) || (msg.keys & KNOB_LEFT) ||
+                                (msg.keys & KEY_UP)   || (msg.keys & KNOB_RIGHT))
+                            {
+                                state.channel.bandwidth ^= 1u;
+                            }
+                            else if (msg.keys & KEY_ENTER)
+                            {
+                                ui_state.edit_mode = false;
+                            }
+                            *sync_rtx = true;
+                            break;
                     }
                 }
                 else if (msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
@@ -2654,6 +2742,10 @@ bool ui_updateGUI()
         // VFO main screen
         case MAIN_VFO:
             _ui_drawMainVFO(&ui_state);
+            break;
+        // FM broadcast radio screen (HD2)
+        case FM_RADIO:
+            _ui_drawFMRadio();
             break;
         // VFO frequency input screen
         case MAIN_VFO_INPUT:

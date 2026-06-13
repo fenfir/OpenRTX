@@ -83,10 +83,15 @@ void OpMode_FM::update(rtxStatus_t *const status, const bool newCfg)
         rssi_t squelch = -127 + (status->sqlLevel * 66) / 15;
         rssi_t rssi    = rtx_getRssi();
 
-        // Provide a bit of hysteresis, only change state if the RSSI has
-        // moved more than 1dBm on either side of the current squelch setting.
-        if((rfSqlOpen == false) && (rssi > (squelch + 1))) rfSqlOpen = true;
-        if((rfSqlOpen == true)  && (rssi < (squelch - 1))) rfSqlOpen = false;
+        // Provide hysteresis: only change state when the RSSI moves more than
+        // 4 dBm beyond the squelch setting (an 8 dBm open/close window).
+        // Widened from +-1 dBm (2026-06-10): a debug-cable ground loop bounces
+        // the RSSI several dB, and the narrow +-1 window let rfSqlOpen flicker,
+        // which thrashed the UI standby/backlight on every status tick (the
+        // "RSSI haywire -> screen flips -> lockup" path).  8 dBm absorbs the
+        // bench noise without hurting real FM-voice squelch behaviour.
+        if((rfSqlOpen == false) && (rssi > (squelch + 4))) rfSqlOpen = true;
+        if((rfSqlOpen == true)  && (rssi < (squelch - 4))) rfSqlOpen = false;
 
         // Local flags for current RF and tone squelch status
         bool rfSql   = ((status->rxToneEn == 0) && (rfSqlOpen == true));

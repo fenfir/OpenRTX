@@ -477,6 +477,16 @@ int _ui_getFMValueName(char* buf, uint8_t max_len, uint8_t index)
                                              last_state.channel.fm.rxToneEn,
                                              false));
             break;
+
+        case Squelch_Level:
+            sniprintf(buf, max_len, "%d", last_state.settings.sqlLevel);
+            break;
+
+        case Bandwidth_Sel:
+            /* channel.bandwidth: BW_12_5 == 0, BW_25 == 1 (rtx.h) */
+            sniprintf(buf, max_len, "%s",
+                    last_state.channel.bandwidth ? "25 kHz" : "12.5 kHz");
+            break;
     }
 
     return 0;
