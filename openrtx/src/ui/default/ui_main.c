@@ -215,6 +215,12 @@ void _ui_drawModeInfo(ui_state_t* ui_state)
         }
         #endif
     }
+
+    // TX power level indicator (E/L/M/H) at the left of the mode line.  FM only
+    // -- DMR/M17 use line2's left edge for call/link symbols.
+    if(last_state.channel.mode == OPMODE_FM)
+        gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_LEFT,
+                  color_white, "%s", _ui_txPowerName(last_state.channel.power, true));
 }
 
 void _ui_drawFrequency()

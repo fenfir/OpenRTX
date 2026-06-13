@@ -136,6 +136,7 @@ enum settingsRadioItems
     R_OFFSET,
     R_DIRECTION,
     R_STEP,
+    R_TXPOWER,
 };
 
 enum settingsM17Items
@@ -249,6 +250,15 @@ extern const char *display_items[];
 extern const char *settings_gps_items[];
 extern const char *settings_radio_items[];
 extern const char *settings_m17_items[];
+
+/* TX power levels (codeplug txPower mW sentinels), ordered low -> high.
+ * Shared by the Radio settings menu (cycle), the menu value renderer, and the
+ * main-screen indicator. */
+extern const uint32_t tx_power_levels[];
+extern const uint8_t  tx_power_num;
+/* Name for a TX power level (mW): abbrev=true -> single letter "E/L/M/H",
+ * false -> "Extra Low"/"Low"/"Medium"/"High". */
+const char *_ui_txPowerName(uint32_t mW, bool abbrev);
 extern const char *settings_fm_items[];
 extern const char * settings_accessibility_items[];
 extern const char *backup_restore_items[];

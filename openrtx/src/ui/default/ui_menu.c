@@ -354,6 +354,13 @@ int _ui_getRadioValueName(char *buf, uint8_t max_len, uint8_t index)
         return 0;
     }
 
+    // TX power level name ("Extra Low" / "Low" / "Medium" / "High")
+    if(index == R_TXPOWER)
+    {
+        sniprintf(buf, max_len, "%s", _ui_txPowerName(last_state.channel.power, false));
+        return 0;
+    }
+
     // Return an x.y string
     uint32_t value  = 0;
     switch(index)

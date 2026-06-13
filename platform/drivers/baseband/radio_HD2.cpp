@@ -88,6 +88,23 @@ static volatile uint16_t apcLevel = 0x400;
 extern "C" void     hd2_apc_set(uint16_t level) { apcLevel = level & 0xfff; }
 extern "C" uint16_t hd2_apc_get(void)           { return apcLevel; }
 
+/*
+ * Map the current codeplug TX power (mW) to the two hardware drive controls:
+ * APC DAC level (ch B) and AT1846S reg 0x0a padrv field.  Four discrete levels
+ * matching the UI (Extra Low / Low / Medium / High).  Shared so any TX path
+ * (radio_enableTx, the APRS diag op) honours the UI-selected level.  Values are
+ * conservative -- even "High" sits well below the DAC ceiling (the PA runs hot
+ * near full drive).
+ */
+extern "C" void hd2_txpower_levels(uint16_t *apc, uint16_t *padrv)
+{
+    const uint32_t p = (config != nullptr) ? config->txPower : 1000u;
+    if(p <= 100u)        { *apc = 0x060u; *padrv = 0x08u; }  /* Extra Low */
+    else if(p <= 1000u)  { *apc = 0x100u; *padrv = 0x08u; }  /* Low       */
+    else if(p <= 2500u)  { *apc = 0x200u; *padrv = 0x0Fu; }  /* Medium    */
+    else                 { *apc = 0x400u; *padrv = 0x0Fu; }  /* High      */
+}
+
 static AT1846S& at1846s = AT1846S::instance();    // AT1846S driver (singleton)
 
 void radio_init(const rtxStatus_t *rtxState)
@@ -277,12 +294,22 @@ void radio_enableTx()
         gpio_atomic_clear(&GPIOB_DR, (1u << 19));
 
     /*
-     * APC TX-power drive: CPU DAC channel B (the line the vendor ramps on
-     * every PTT edge -- without it the PA sits at minimum drive and the
-     * carrier barely crosses the room).  Power the channel up and set the
-     * level; no soft ramp yet (vendor steps it over ~tens of ms for
-     * splatter politeness -- TODO with the power cal table).
+     * TX power level -> APC DAC drive (ch B) + AT1846S reg 0x0a padrv.  The
+     * codeplug txPower (mW) selects one of four discrete levels exposed in the
+     * UI (Extra Low / Low / Medium / High).  Two hardware controls move
+     * together:
+     *   - APC (CPU DAC channel B): the PA bias the vendor ramps every PTT edge;
+     *     without drive the carrier barely crosses the room.
+     *   - padrv (reg 0x0a bits 14:11, with the 0x420 low bits = pga_gain 0x10 +
+     *     pabias 0, the vendor analog-TX value; 0xF = full).
+     * Values are deliberately conservative -- the PA runs hot near full drive,
+     * so even "High" sits well below the DAC ceiling (0xfff).  Refine to a
+     * per-band cal curve when nvm_readCalibData gets an HD2 backend.
      */
+    uint16_t apc, padrv;
+    hd2_txpower_levels(&apc, &padrv);          // map current txPower -> APC + padrv
+    apcLevel = apc;                            // (apcLevel is volatile; copy via temp)
+
     DAC_PD_MODE_EN &= ~0x2u;                   // ch B low-power mode off
     DAC_PD_CTRL    &= ~0x2u;                   // ch B power up
     DAC_DATA_B      = apcLevel;
@@ -290,24 +317,7 @@ void radio_enableTx()
     // Vendor TX parity: mic-path gate PTB3 high (vendor mic_path_set_by_freq).
     gpio_atomic_set(&GPIOB_DR, (1u << 3));
 
-    /*
-     * TX RF power = AT1846S reg 0x0a padrv_ibit (bits 14:11, "output of RF
-     * power control"; vendor runtime expr (code & 0x1f)<<11 | 0x420, default
-     * 0x7c20 = padrv 0xF max).  The low bits 0x420 hold pga_gain=0x10 (TX
-     * voice analog gain) + pabias=0, matching the vendor analog-TX value.
-     *
-     * config->txPower is in mW.  Without an HD2 flash-cal backend yet (the
-     * per-band tables at 0x7af280 the vendor interpolates), use a 2-level map
-     * honouring the codeplug Low/High flag: High -> full padrv, Low -> backed
-     * off.  Refine to a calibrated per-band curve when nvm_readCalibData has
-     * an HD2 backend.  (reg 0x0a was wrongly dismissed during the 2026-06-11
-     * power hunt -- that was a deaf bench RX, not an ineffective register.)
-     */
-    {
-        uint16_t padrv = (config->txPower > 1500u) ? 0x0Fu   /* High: full  */
-                                                   : 0x08u;  /* Low:  ~half */
-        hd2_at1846s_write(0x0a, (uint16_t)((padrv << 11) | 0x0420u));
-    }
+    hd2_at1846s_write(0x0a, (uint16_t)((padrv << 11) | 0x0420u));
 
     // TX FM deviation (reg 0x59 -- shared with the RX mixer gain, so it is
     // restored in radio_disableRtx()).  Pick by bandwidth and whether a

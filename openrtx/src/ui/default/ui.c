@@ -164,7 +164,25 @@ const char *settings_radio_items[] =
     "Offset",
     "Direction",
     "Step",
+    "TX Power",
 };
+
+// TX power levels (codeplug txPower mW), ordered low -> high.  radio_HD2.cpp
+// maps each sentinel to an APC DAC drive + AT1846S padrv (Extra Low..High).
+const uint32_t tx_power_levels[] = { 100, 1000, 2500, 5000 };
+const uint8_t  tx_power_num = sizeof(tx_power_levels) / sizeof(tx_power_levels[0]);
+
+const char *_ui_txPowerName(uint32_t mW, bool abbrev)
+{
+    switch(mW)
+    {
+        case 100:  return abbrev ? "E" : "Extra Low";
+        case 1000: return abbrev ? "L" : "Low";
+        case 2500: return abbrev ? "M" : "Medium";
+        case 5000: return abbrev ? "H" : "High";
+        default:   return abbrev ? "?" : "?";
+    }
+}
 
 const char * settings_m17_items[] =
 {
@@ -1042,12 +1060,20 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
 
             switch(state.channel.power)
             {
-                case 1000:
+                case 100:                       // Extra Low -> Low
+                    state.channel.power = 1000;
+                    break;
+
+                case 1000:                      // Low -> Medium
                     state.channel.power = 2500;
                     break;
 
-                case 2500:
+                case 2500:                      // Medium -> High
                     state.channel.power = 5000;
+                    break;
+
+                case 5000:                      // High -> Extra Low (wrap)
+                    state.channel.power = 100;
                     break;
 
                 default:
@@ -2343,6 +2369,23 @@ void ui_updateFSM(bool *sync_rtx)
                                 state.step_index--;
                                 state.step_index %= n_freq_steps;
                             }
+                            break;
+                        case R_TXPOWER:
+                        {
+                            // Cycle the TX power level (Extra Low..High); the
+                            // change reaches the radio via the rtx reconfigure.
+                            uint8_t idx = 0;
+                            for(uint8_t i = 0; i < tx_power_num; ++i)
+                                if(state.channel.power == tx_power_levels[i]) { idx = i; break; }
+
+                            if(msg.keys & KEY_UP || msg.keys & KEY_RIGHT || msg.keys & KNOB_RIGHT)
+                                idx = (idx + 1) % tx_power_num;
+                            else if(msg.keys & KEY_DOWN || msg.keys & KEY_LEFT || msg.keys & KNOB_LEFT)
+                                idx = (idx + tx_power_num - 1) % tx_power_num;
+
+                            state.channel.power = tx_power_levels[idx];
+                            *sync_rtx = true;
+                        }
                             break;
                         default:
                             state.ui_screen = SETTINGS_RADIO;
