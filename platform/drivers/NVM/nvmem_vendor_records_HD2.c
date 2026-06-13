@@ -66,11 +66,16 @@ int hd2_vendor_contact_present(const hd2_vendor_contact_t *c)
 
 int hd2_vendor_channel_present(const hd2_vendor_channel_t *c)
 {
-    if((uint8_t)c->name[0] == 0xFFu || c->name[0] == 0x00) return 0;
-    /* a blank slot is all-0xFF including the freq fields */
-    if(c->rx_freq[0] == 0xFFu && c->rx_freq[1] == 0xFFu &&
-       c->rx_freq[2] == 0xFFu && c->rx_freq[3] == 0xFFu) return 0;
-    return 1;
+    /* Key off the RX frequency, NOT the name -- valid channels can be unnamed
+     * (e.g. cp_ai5qz channel 0 = 145.325 MHz with a blank name).  An erased
+     * slot has rx_freq all-0xFF; an unused/zeroed slot all-0x00. */
+    int all_ff = 1, all_00 = 1;
+    for(int i = 0; i < 4; ++i)
+    {
+        if(c->rx_freq[i] != 0xFFu) all_ff = 0;
+        if(c->rx_freq[i] != 0x00u) all_00 = 0;
+    }
+    return !(all_ff || all_00);
 }
 
 int hd2_vendor_contact_read(uint16_t index, hd2_vendor_contact_t *out)
