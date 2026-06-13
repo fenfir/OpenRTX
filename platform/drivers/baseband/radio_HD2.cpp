@@ -312,6 +312,12 @@ void radio_enableTx()
     hd2_at1846s_write(0x30, 0x4046u);          // tx_on
     hd2_at1846s_write(0x30, 0x40c6u);          // + bit7: PA on (vendor tx_pa_enable)
 
+    // Sub-audio CTCSS encode: the AT1846S sums its own CTCSS generator into the
+    // TX modulation (reg 0x4A freq + reg 0x4E enable), alongside the C7000 voice
+    // modulation on the MOD pins.  disableCtcss() in radio_disableRtx() clears it.
+    if(config->txToneEn)
+        at1846s.enableTxCtcss(config->txTone);
+
     radioStatus = TX;
 }
 
