@@ -113,6 +113,7 @@
 #include "interfaces/nvmem.h"
 #include "interfaces/delays.h"
 #include "drivers/SPI/spi_hd2.h"
+#include "drivers/NVM/flash_w25q_HD2.h"
 #include "core/crc.h"
 #include "hd2_regs.h"
 #include <stdbool.h>
@@ -127,22 +128,6 @@
 
 #define HD2_SETT_MAGIC      0x56533248u  /* "H2SV" little-endian     */
 #define HD2_SETT_VERSION    1u
-
-/* W25Q opcodes.  Read/program/erase are the dedicated 4-byte-address
- * variants (work in both 3- and 4-byte address mode, see header). */
-#define OPC_WREN            0x06u
-#define OPC_RDSR1           0x05u
-#define OPC_JEDEC_ID        0x9Fu
-#define OPC_WAKEUP          0xABu
-#define OPC_READ_4B         0x13u
-#define OPC_PROG_4B         0x12u
-#define OPC_ERASE_4K_4B     0x21u
-
-/* CS# = GPIOA bit 18 (pinmap.h EXT_FLASH_CS_BIT), active low. */
-#define FLASH_CS_MASK       (1u << 18)
-
-/* CSKY V2 store-buffer drain, same as spi_hd2.c / gpio_atomic_*. */
-#define MMIO_SYNC()         __asm__ volatile ("sync" ::: "memory")
 
 typedef struct
 {
@@ -161,156 +146,11 @@ enum cacheState { CACHE_UNKNOWN = 0, CACHE_VALID, CACHE_INVALID };
 
 static hd2SettBlock_t blockCache;
 static enum cacheState cacheState = CACHE_UNKNOWN;
-static bool busInited = false;
 
 
 /* ================================================================== *
- *  Low-level locked SPI transactions                                  *
+ *  Low-level W25Q access: shared flash_w25q_HD2 driver               *
  * ================================================================== */
-
-/*
- * One full SPI transaction: CS low, send cmd[], then (optionally) send
- * data[] and/or clock in rx[], CS high.  Runs with IRQs disabled so it
- * is atomic w.r.t. the I2C bit-bang's GPIOA read-modify-writes.
- */
-static void flashXfer(const uint8_t *cmd, size_t cmdLen,
-                      const void *txData, size_t txLen,
-                      void *rxData, size_t rxLen)
-{
-    uint32_t irq = hd2_irq_save();
-
-    GPIOA_DR &= ~FLASH_CS_MASK;             /* CS assert (active low) */
-    MMIO_SYNC();
-
-    nvm_spi.transfer(&nvm_spi, cmd, NULL, cmdLen);
-    if(txLen > 0)
-        nvm_spi.transfer(&nvm_spi, txData, NULL, txLen);
-    if(rxLen > 0)
-        nvm_spi.transfer(&nvm_spi, NULL, rxData, rxLen);
-
-    GPIOA_DR |= FLASH_CS_MASK;              /* CS deassert */
-    MMIO_SYNC();
-
-    hd2_irq_restore(irq);
-}
-
-/* Poll the busy flag (SR1 bit 0) until clear; timeout in milliseconds. */
-static int flashWaitReady(uint32_t timeoutMs)
-{
-    uint32_t ticks = timeoutMs * 2;         /* 500 us per poll */
-
-    while(ticks > 0)
-    {
-        uint8_t cmd = OPC_RDSR1;
-        uint8_t sr  = 0xFF;
-        flashXfer(&cmd, 1, NULL, 0, &sr, 1);
-
-        if((sr & 0x01u) == 0)
-            return 0;
-
-        delayUs(500);
-        ticks--;
-    }
-
-    return -1;
-}
-
-/*
- * Bring the bus up (idempotent) and verify the chip answers with the
- * expected JEDEC id.  This is the gate in front of EVERY flash access:
- * a passing JEDEC read proves MOSI, MISO, SCK and CS all work at
- * firmware bit-bang speed, so subsequent commands will clock their
- * address bytes out correctly.  Returns true when the flash is usable.
- */
-static bool flashProbe(void)
-{
-    if(!busInited)
-    {
-        spi_hd2_init();
-        busInited = true;
-    }
-
-    /* Release from deep power-down (the chip may boot in DPD).
-     * tRES2 is ~3 us; wait comfortably longer. */
-    uint8_t cmd = OPC_WAKEUP;
-    flashXfer(&cmd, 1, NULL, 0, NULL, 0);
-    delayUs(50);
-
-    uint8_t id[3] = {0, 0, 0};
-    cmd = OPC_JEDEC_ID;
-    flashXfer(&cmd, 1, NULL, 0, id, 3);
-
-    /* W25Q512: ef 40 20.  Capacity byte 0x20 also guarantees the
-     * 4-byte-address instruction set used below exists. */
-    return (id[0] == 0xEF) && (id[1] == 0x40) && (id[2] == 0x20);
-}
-
-static void flashRead(uint32_t addr, void *buf, size_t len)
-{
-    const uint8_t cmd[] =
-    {
-        OPC_READ_4B,
-        (uint8_t)(addr >> 24), (uint8_t)(addr >> 16),
-        (uint8_t)(addr >> 8),  (uint8_t)(addr),
-    };
-
-    flashXfer(cmd, sizeof(cmd), NULL, 0, buf, len);
-}
-
-static void flashWriteEnable(void)
-{
-    uint8_t cmd = OPC_WREN;
-    flashXfer(&cmd, 1, NULL, 0, NULL, 0);
-    delayUs(5);
-}
-
-static int flashEraseSector(uint32_t addr)
-{
-    const uint8_t cmd[] =
-    {
-        OPC_ERASE_4K_4B,
-        (uint8_t)(addr >> 24), (uint8_t)(addr >> 16),
-        (uint8_t)(addr >> 8),  (uint8_t)(addr),
-    };
-
-    flashWriteEnable();
-    flashXfer(cmd, sizeof(cmd), NULL, 0, NULL, 0);
-
-    /* 4 kB sector erase: typ. 45 ms, max 400 ms. */
-    return flashWaitReady(500);
-}
-
-/* Program `len` bytes at `addr`, splitting on 256-byte page bounds. */
-static int flashProgram(uint32_t addr, const void *buf, size_t len)
-{
-    const uint8_t *data = (const uint8_t *) buf;
-
-    while(len > 0)
-    {
-        size_t pageRoom = HD2_PAGE_SIZE - (addr & (HD2_PAGE_SIZE - 1));
-        size_t chunk    = (len < pageRoom) ? len : pageRoom;
-
-        const uint8_t cmd[] =
-        {
-            OPC_PROG_4B,
-            (uint8_t)(addr >> 24), (uint8_t)(addr >> 16),
-            (uint8_t)(addr >> 8),  (uint8_t)(addr),
-        };
-
-        flashWriteEnable();
-        flashXfer(cmd, sizeof(cmd), data, chunk, NULL, 0);
-
-        /* Page program: typ. 0.4 ms, max 3 ms. */
-        if(flashWaitReady(10) < 0)
-            return -1;
-
-        addr += chunk;
-        data += chunk;
-        len  -= chunk;
-    }
-
-    return 0;
-}
 
 
 /* ================================================================== *
@@ -336,10 +176,10 @@ static void loadCache(void)
 
     cacheState = CACHE_INVALID;
 
-    if(flashProbe() == false)
+    if(w25q_hd2_probe() == false)
         return;
 
-    flashRead(HD2_SETT_SECTOR, &blockCache, sizeof(blockCache));
+    w25q_hd2_read(HD2_SETT_SECTOR, &blockCache, sizeof(blockCache));
 
     if(blockCache.magic   != HD2_SETT_MAGIC)            return;
     if(blockCache.version != HD2_SETT_VERSION)          return;
@@ -352,18 +192,18 @@ static void loadCache(void)
 /* Erase + program + verify one complete block; updates the cache. */
 static int storeBlock(const hd2SettBlock_t *block)
 {
-    if(flashProbe() == false)
+    if(w25q_hd2_probe() == false)
         return -1;
 
-    if(flashEraseSector(HD2_SETT_SECTOR) < 0)
+    if(w25q_hd2_eraseSector(HD2_SETT_SECTOR) < 0)
         return -1;
 
-    if(flashProgram(HD2_SETT_SECTOR, block, sizeof(*block)) < 0)
+    if(w25q_hd2_program(HD2_SETT_SECTOR, block, sizeof(*block)) < 0)
         return -1;
 
     /* Read-back verify: never trust a torn/failed program. */
     hd2SettBlock_t check;
-    flashRead(HD2_SETT_SECTOR, &check, sizeof(check));
+    w25q_hd2_read(HD2_SETT_SECTOR, &check, sizeof(check));
     if(memcmp(&check, block, sizeof(check)) != 0)
     {
         cacheState = CACHE_INVALID;

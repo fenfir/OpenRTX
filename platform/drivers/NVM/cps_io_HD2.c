@@ -28,125 +28,22 @@
  * settings sector (0x00FFF000, nvmem_settings_HD2.c) -- the same upper
  * neighborhood validated free of live vendor data.
  *
- * The W25Q access primitives below mirror nvmem_settings_HD2.c (4-byte-addr
- * opcodes, JEDEC gate, IRQ-locked transactions).  They are intentionally a
- * local copy: the settings driver is validated and self-contained, and a
- * shared low-level W25Q driver is a future refactor (TODO) rather than a
- * change to proven code.
+ * W25Q access goes through the shared flash_w25q_HD2 driver (4-byte-addr
+ * opcodes, JEDEC gate, IRQ-locked transactions).
  */
 
 #include "interfaces/cps_io.h"
-#include "drivers/SPI/spi_hd2.h"
-#include "hd2_regs.h"                /* GPIOA_DR + hd2_irq_save/restore (inline) */
+#include "flash_w25q_HD2.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
 
-/* ================================================================== *
- *  W25Q512 low-level access (HW SPI0; see header note)               *
- * ================================================================== */
-
-#define FLASH_CS_MASK   (1u << 18)            /* CS# = GPIOA.18, active low */
-#define MMIO_SYNC()     __asm__ volatile ("sync" ::: "memory")
-
-#define HD2_PAGE_SIZE   256u
-#define HD2_SECTOR_SIZE 4096u
-
-#define OPC_WREN        0x06u
-#define OPC_RDSR1       0x05u
-#define OPC_JEDEC_ID    0x9Fu
-#define OPC_WAKEUP      0xABu
-#define OPC_READ_4B     0x13u
-#define OPC_PROG_4B     0x12u
-#define OPC_ERASE_4K_4B 0x21u
+#define HD2_SECTOR_SIZE  W25Q_HD2_SECTOR_SIZE
 
 /* Codeplug region on the W25Q. */
 #define CPS_BASE         0x00FEF000u
 #define CPS_REGION_SIZE  0x00010000u          /* 64 kB = 16 x 4 kB sectors */
-
-static void flashXfer(const uint8_t *cmd, size_t cmdLen,
-                      const void *txData, size_t txLen,
-                      void *rxData, size_t rxLen)
-{
-    uint32_t irq = hd2_irq_save();
-    GPIOA_DR &= ~FLASH_CS_MASK;
-    MMIO_SYNC();
-    nvm_spi.transfer(&nvm_spi, cmd, NULL, cmdLen);
-    if(txLen > 0) nvm_spi.transfer(&nvm_spi, txData, NULL, txLen);
-    if(rxLen > 0) nvm_spi.transfer(&nvm_spi, NULL, rxData, rxLen);
-    GPIOA_DR |= FLASH_CS_MASK;
-    MMIO_SYNC();
-    hd2_irq_restore(irq);
-}
-
-static int flashWaitReady(uint32_t timeoutMs)
-{
-    uint32_t ticks = timeoutMs * 2;           /* ~500 us per poll */
-    while(ticks > 0)
-    {
-        uint8_t cmd = OPC_RDSR1, sr = 0xFF;
-        flashXfer(&cmd, 1, NULL, 0, &sr, 1);
-        if((sr & 0x01u) == 0u) return 0;      /* WIP clear */
-        for(volatile unsigned i = 0; i < 4000u; ++i) { }
-        ticks--;
-    }
-    return -1;
-}
-
-static bool flashProbe(void)
-{
-    spi_hd2_init();
-    uint8_t cmd = OPC_WAKEUP;
-    flashXfer(&cmd, 1, NULL, 0, NULL, 0);
-    for(volatile unsigned i = 0; i < 8000u; ++i) { }   /* tRES2 settle */
-    uint8_t id[3] = { 0, 0, 0 };
-    cmd = OPC_JEDEC_ID;
-    flashXfer(&cmd, 1, NULL, 0, id, 3);
-    return (id[0] == 0xEF) && (id[1] == 0x40) && (id[2] == 0x20);
-}
-
-static void flashWriteEnable(void)
-{
-    uint8_t cmd = OPC_WREN;
-    flashXfer(&cmd, 1, NULL, 0, NULL, 0);
-}
-
-static void flashRead(uint32_t addr, void *buf, size_t len)
-{
-    const uint8_t cmd[] = { OPC_READ_4B,
-        (uint8_t)(addr >> 24), (uint8_t)(addr >> 16),
-        (uint8_t)(addr >> 8),  (uint8_t)(addr) };
-    flashXfer(cmd, sizeof(cmd), NULL, 0, buf, len);
-}
-
-static int flashEraseSector(uint32_t addr)
-{
-    const uint8_t cmd[] = { OPC_ERASE_4K_4B,
-        (uint8_t)(addr >> 24), (uint8_t)(addr >> 16),
-        (uint8_t)(addr >> 8),  (uint8_t)(addr) };
-    flashWriteEnable();
-    flashXfer(cmd, sizeof(cmd), NULL, 0, NULL, 0);
-    return flashWaitReady(500);               /* sector erase: typ 45 ms */
-}
-
-static int flashProgram(uint32_t addr, const void *buf, size_t len)
-{
-    const uint8_t *data = (const uint8_t *) buf;
-    while(len > 0)
-    {
-        size_t pageRoom = HD2_PAGE_SIZE - (addr & (HD2_PAGE_SIZE - 1));
-        size_t chunk    = (len < pageRoom) ? len : pageRoom;
-        const uint8_t cmd[] = { OPC_PROG_4B,
-            (uint8_t)(addr >> 24), (uint8_t)(addr >> 16),
-            (uint8_t)(addr >> 8),  (uint8_t)(addr) };
-        flashWriteEnable();
-        flashXfer(cmd, sizeof(cmd), data, chunk, NULL, 0);
-        if(flashWaitReady(10) < 0) return -1;
-        addr += chunk; data += chunk; len -= chunk;
-    }
-    return 0;
-}
 
 /* ================================================================== *
  *  In-RAM "memfile" -- the open codeplug image                       *
@@ -194,10 +91,10 @@ static int mf_commit(void)
     uint32_t span = (mf_size + HD2_SECTOR_SIZE - 1u) & ~(HD2_SECTOR_SIZE - 1u);
     if(span == 0u) span = HD2_SECTOR_SIZE;
     if(span > CPS_REGION_SIZE) span = CPS_REGION_SIZE;
-    if(!flashProbe()) return -1;
+    if(!w25q_hd2_probe()) return -1;
     for(uint32_t off = 0; off < span; off += HD2_SECTOR_SIZE)
-        if(flashEraseSector(CPS_BASE + off) < 0) return -1;
-    if(flashProgram(CPS_BASE, mf_buf, mf_size) < 0) return -1;
+        if(w25q_hd2_eraseSector(CPS_BASE + off) < 0) return -1;
+    if(w25q_hd2_program(CPS_BASE, mf_buf, mf_size) < 0) return -1;
     mf_dirty = false;
     return 0;
 }
@@ -268,10 +165,10 @@ int cps_open(char *cps_name)
         mf_buf = (uint8_t *) malloc(CPS_REGION_SIZE);
         if(mf_buf == NULL) return -1;
     }
-    if(!flashProbe()) { free(mf_buf); mf_buf = NULL; return -1; }
+    if(!w25q_hd2_probe()) { free(mf_buf); mf_buf = NULL; return -1; }
 
     /* Load the header first to learn the meaningful size, then the body. */
-    flashRead(CPS_BASE, mf_buf, sizeof(cps_header_t));
+    w25q_hd2_read(CPS_BASE, mf_buf, sizeof(cps_header_t));
     cps_header_t hdr;
     memcpy(&hdr, mf_buf, sizeof(hdr));
     if(hdr.magic != CPS_MAGIC)
@@ -281,11 +178,11 @@ int cps_open(char *cps_name)
         if(cps_create(NULL) != 0) return -1;
         mf_buf = (uint8_t *) malloc(CPS_REGION_SIZE);
         if(mf_buf == NULL) return -1;
-        flashRead(CPS_BASE, mf_buf, sizeof(cps_header_t));
+        w25q_hd2_read(CPS_BASE, mf_buf, sizeof(cps_header_t));
         memcpy(&hdr, mf_buf, sizeof(hdr));
     }
     /* Read the full region; mf_size is then trimmed to the real end-of-data. */
-    flashRead(CPS_BASE, mf_buf, CPS_REGION_SIZE);
+    w25q_hd2_read(CPS_BASE, mf_buf, CPS_REGION_SIZE);
     mf_size = CPS_REGION_SIZE;
     mf_dirty = false;
     long end = _getBankDataOffset(hdr.b_count);
@@ -312,9 +209,9 @@ int cps_create(char *cps_name)
     header.ch_count = 0;
     header.b_count  = 0;
 
-    if(!flashProbe()) return -1;
-    if(flashEraseSector(CPS_BASE) < 0) return -1;
-    return flashProgram(CPS_BASE, &header, sizeof(header));
+    if(!w25q_hd2_probe()) return -1;
+    if(w25q_hd2_eraseSector(CPS_BASE) < 0) return -1;
+    return w25q_hd2_program(CPS_BASE, &header, sizeof(header));
 }
 
 int cps_readContact(contact_t *contact, uint16_t pos)
