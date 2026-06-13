@@ -32,6 +32,47 @@ static int decodeAddr(const uint8_t* a, char* out)
     return a[6] & 1;
 }
 
+uint16_t crc16X25(const uint8_t* data, int len)
+{
+    uint16_t crc = 0xFFFF;
+    for(int i = 0; i < len; ++i)
+    {
+        crc ^= data[i];
+        for(int b = 0; b < 8; ++b)
+            crc = (crc & 1) ? (crc >> 1) ^ 0x8408 : (crc >> 1);
+    }
+    return crc ^ 0xFFFF;
+}
+
+// Encode one AX.25 address field: 6 chars shifted left 1, space-padded, then
+// the SSID byte (0x60 | ssid<<1 | last-bit).
+static int encodeAddr(const char* call, int ssid, int last, uint8_t* out)
+{
+    int i = 0;
+    for(; i < 6 && call[i]; ++i) out[i] = (uint8_t)(call[i] << 1);
+    for(; i < 6; ++i)            out[i] = (uint8_t)(' ' << 1);
+    out[6] = (uint8_t)(0x60 | ((ssid & 0x0f) << 1) | (last & 1));
+    return 7;
+}
+
+int buildUi(const char* dst, int dstSsid, const char* src, int srcSsid,
+            const char* digi, int digiSsid, const char* info,
+            uint8_t* out, int outSize)
+{
+    int need = 14 + (digi ? 7 : 0) + 2;
+    int infolen = 0; while(info[infolen]) infolen++;
+    if(need + infolen > outSize) return 0;
+
+    int o = 0;
+    o += encodeAddr(dst, dstSsid, 0, out + o);
+    o += encodeAddr(src, srcSsid, digi ? 0 : 1, out + o);
+    if(digi) o += encodeAddr(digi, digiSsid, 1, out + o);
+    out[o++] = 0x03;            // UI control
+    out[o++] = 0xF0;            // PID: no layer 3
+    for(int i = 0; i < infolen; ++i) out[o++] = (uint8_t)info[i];
+    return o;
+}
+
 int formatAx25(const uint8_t* frame, int len, char* out, int outSize)
 {
     if(len < 16) return 0;
