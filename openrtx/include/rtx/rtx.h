@@ -120,6 +120,14 @@ void rtx_terminate();
 void rtx_configure(const rtxStatus_t *cfg);
 
 /**
+ * Live-set the FM TX extras (bench/diag override; these normally come from the
+ * codeplug via rtx_configure).
+ * @param flags: bit0 = 1750 Hz key-up burst, bit1 = CTCSS/DCS tail elimination.
+ * @param vox:   VOX level 0..5 (0 = off).
+ */
+void rtx_setFmExtras(uint8_t flags, uint8_t vox);
+
+/**
  * Obtain a copy of the RTX driver's internal status data structure.
  * @return copy of the RTX driver's internal status data structure.
  */

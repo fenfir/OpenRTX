@@ -95,6 +95,15 @@ void rtx_configure(const rtxStatus_t *cfg)
     pthread_mutex_unlock(cfgMutex);
 }
 
+void rtx_setFmExtras(uint8_t flags, uint8_t vox)
+{
+    // Bench/diag live override; small single-field pokes (the codeplug path is
+    // rtx_configure).  Applied on the next rtx_task update.
+    rtxStatus.toneBurst1750 = (flags & 0x01u) ? 1u : 0u;
+    rtxStatus.tailElim      = (flags & 0x02u) ? 1u : 0u;
+    rtxStatus.vox           = (vox > 5u) ? 5u : vox;
+}
+
 rtxStatus_t rtx_getCurrentStatus()
 {
     return rtxStatus;

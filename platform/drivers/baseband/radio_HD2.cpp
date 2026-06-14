@@ -41,6 +41,7 @@
  */
 
 #include "interfaces/radio.h"
+#include "interfaces/delays.h"
 #include "drivers/baseband/AT1846S.h"
 #include "drivers/i2c_csky.h"
 #include "radioUtils.h"
@@ -159,6 +160,12 @@ void radio_setOpmode(const enum opmode mode)
              */
             at1846s.setOpMode(AT1846S_OpMode::DMR);
             at1846s.setBandwidth(AT1846S_BW::_12P5);
+            break;
+
+        case OPMODE_FM_BCAST:
+            /* Broadcast FM uses the separate RDA5802E tuner, not the AT1846S.
+             * Leave the transceiver as-is (idle); OpMode_FMBroadcast mutes the
+             * AT1846S AF on the shared analog node via the tuner HAL. */
             break;
 
         default:
@@ -1012,6 +1019,47 @@ extern "C" bool radio_checkRxRfSquelch(bool *open)
 {
     *open = hd2_rx_carrier_detected();
     return true;
+}
+
+/* ---- FM TX-extras HAL (interfaces/radio.h) -- strong overrides of OpMode_FM's
+ * weak hooks, ported from the hd2_rtx.c TX path.  Tone1 generator (reg 0x35
+ * freq, 0x3A[14:12] source, 0x79[15:14] output); tail-elim reverse burst
+ * (reg 0x30[11]); VOX via the bit-bang hd2_vox_* ops (defined below). ---- */
+
+extern "C" void radio_fmToneBurst(void)
+{
+    if(g_rf_freeze != 0u) return;
+    hd2_at1846s_write(0x35, 17500u);                                                /* 1750.0 Hz */
+    hd2_at1846s_write(0x3A, (uint16_t)((hd2_at1846s_read(0x3A) & ~0x7000u) | 0x1000u)); /* tone1 src */
+    hd2_at1846s_write(0x79, (uint16_t)((hd2_at1846s_read(0x79) & ~0xF000u) | 0xC000u)); /* tone out */
+    sleepFor(0u, 750u);                                                             /* ~0.75 s burst */
+    hd2_at1846s_write(0x3A, (uint16_t)((hd2_at1846s_read(0x3A) & ~0x7000u) | 0x4000u)); /* back to mic */
+    hd2_at1846s_write(0x79, (uint16_t)(hd2_at1846s_read(0x79) & ~0xF000u));          /* tone off */
+}
+
+extern "C" void radio_fmTailElim(void)
+{
+    if(g_rf_freeze != 0u) return;
+    /* Engage the reverse-burst (reg 0x30[11]) with the carrier still keyed; the
+     * caller dekeys after this returns (radio_disableRtx clears the bit). */
+    hd2_at1846s_write(0x30, (uint16_t)(hd2_at1846s_read(0x30) | 0x0800u));
+    sleepFor(0u, 180u);                                                             /* ~180 ms hold */
+}
+
+extern "C" void radio_fmVoxArm(uint8_t level)
+{
+    if(g_rf_freeze != 0u) return;
+    /* Map VOX level 1..5 to an AT1846S reg-0x64 threshold (higher = more
+     * sensitive = lower threshold); 0 / out-of-range disables. */
+    static const uint8_t code[5] = { 0x45u, 0x48u, 0x4Cu, 0x52u, 0x58u };
+    if(level == 0u || level > 5u) { hd2_vox_disable(); return; }
+    uint8_t th = code[level - 1u];
+    hd2_vox_enable(th, th);
+}
+
+extern "C" bool radio_fmVoxDetected(void)
+{
+    return hd2_vox_detected();
 }
 
 /*

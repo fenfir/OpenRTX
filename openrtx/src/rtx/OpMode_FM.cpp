@@ -58,6 +58,17 @@ extern "C" __attribute__((weak)) bool radio_checkRxRfSquelch(bool *open)
     return false;
 }
 
+/*
+ * Weak defaults for the FM TX-extras hooks (1750 burst / tail-elim / VOX).
+ * Targets that support these override them in their radio driver; by default
+ * the burst/tail are no-ops and VOX never triggers, so the TX path below is
+ * plain PTT keying -- unchanged behaviour for radios without the extras.
+ */
+extern "C" __attribute__((weak)) void radio_fmToneBurst(void)         { }
+extern "C" __attribute__((weak)) void radio_fmTailElim(void)          { }
+extern "C" __attribute__((weak)) void radio_fmVoxArm(uint8_t level)   { (void) level; }
+extern "C" __attribute__((weak)) bool radio_fmVoxDetected(void)       { return false; }
+
 void OpMode_FM::enable()
 {
     // When starting, close squelch and prepare for entering in RX mode.
@@ -141,29 +152,69 @@ void OpMode_FM::update(rtxStatus_t *const status, const bool newCfg)
         radio_enableRx();
         status->opStatus = RX;
         enterRx = false;
+
+        // (Re-)arm the VOX detector -- entering RX clears it.  No-op on radios
+        // without VOX (weak default) or when status->vox == 0.
+        radio_fmVoxArm(status->vox);
     }
 
-    // TX logic
-    if(platform_getPttStatus() && (status->opStatus != TX) &&
-                                  (status->txDisable == 0))
+    // TX logic: hardware PTT or VOX keying, with an optional 1750 Hz key-up
+    // burst and CTCSS/DCS tail elimination on dekey.  (txIsVox/voxHang are
+    // function-local statics -- OpMode_FM is a singleton.)
+    static bool     txIsVox = false;        // current key started by VOX, not PTT
+    static uint32_t voxHang = 0;            // VOX hangtime countdown (update ticks)
+    const  uint32_t VOX_HANG_TICKS = 30u;   // ~0.9 s @ 33 Hz
+
+    bool ptt = platform_getPttStatus();
+
+    // Key entry: PTT always wins; VOX only while listening with squelch closed
+    // (don't key over an incoming signal or self-trigger off speaker audio).
+    bool keyByPtt = ptt && (status->txDisable == 0);
+    bool keyByVox = (!keyByPtt) && (status->txDisable == 0) && (status->vox != 0)
+                    && (status->opStatus == RX) && (sqlOpen == false)
+                    && radio_fmVoxDetected();
+
+    if((keyByPtt || keyByVox) && (status->opStatus != TX))
     {
         audioPath_release(rxAudioPath);
         radio_disableRtx();
 
         txAudioPath = audioPath_request(SOURCE_MIC, SINK_RTX, PRIO_TX);
         radio_enableTx();
-
         status->opStatus = TX;
+
+        txIsVox = (keyByVox && !keyByPtt);
+        voxHang = VOX_HANG_TICKS;
+
+        if(status->toneBurst1750) radio_fmToneBurst();   // blocking ~0.75 s
     }
 
-    if(!platform_getPttStatus() && (status->opStatus == TX))
+    if(status->opStatus == TX)
     {
-        audioPath_release(txAudioPath);
-        radio_disableRtx();
+        // A hardware PTT during a VOX key converts it to a held PTT key.
+        if(txIsVox && ptt) txIsVox = false;
 
-        status->opStatus = OFF;
-        enterRx = true;
-        sqlOpen = false;  // Force squelch to be redetected.
+        // VOX-keyed: hold while speech continues, then run the hangtime.
+        if(txIsVox)
+        {
+            if(radio_fmVoxDetected()) voxHang = VOX_HANG_TICKS;
+            else if(voxHang > 0u)     voxHang--;
+        }
+
+        bool drop = txIsVox ? (voxHang == 0u) : (!ptt);
+        if(drop)
+        {
+            // CTCSS/DCS tail-elimination reverse burst before the real dekey.
+            if(status->tailElim && status->txToneEn) radio_fmTailElim();  // blocking
+
+            audioPath_release(txAudioPath);
+            radio_disableRtx();
+
+            status->opStatus = OFF;
+            enterRx = true;
+            sqlOpen = false;  // Force squelch to be redetected.
+            txIsVox = false;
+        }
     }
 
     // Led control logic

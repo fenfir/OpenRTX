@@ -72,6 +72,35 @@ bool radio_checkRxDigitalSquelch();
 bool radio_checkRxRfSquelch(bool *open);
 
 /**
+ * FM TX key-up tone burst (e.g. 1750 Hz repeater access).  BLOCKING: sounds the
+ * burst for its fixed duration then stops, with the carrier already keyed.
+ * Called from OpMode_FM on TX entry when rtxStatus.toneBurst1750 is set.  Weak
+ * default is a no-op.
+ */
+void radio_fmToneBurst(void);
+
+/**
+ * FM CTCSS/DCS tail-elimination reverse burst on dekey.  BLOCKING: holds the
+ * keyed carrier with the reverse-phase sub-audio for its fixed duration so the
+ * far end drops carrier without a squelch tail; the caller dekeys afterwards.
+ * Called from OpMode_FM before disabling TX when rtxStatus.tailElim is set
+ * (and a TX tone is active).  Weak default is a no-op.
+ */
+void radio_fmTailElim(void);
+
+/**
+ * Arm/disarm the FM VOX detector for RX-side voice keying.
+ * @param level: VOX sensitivity 1..5 (0 = disable).  Weak default is a no-op.
+ */
+void radio_fmVoxArm(uint8_t level);
+
+/**
+ * @return true while the VOX detector reports voice present.  Weak default
+ *         returns false (no VOX).
+ */
+bool radio_fmVoxDetected(void);
+
+/**
  * Enable AF output towards the speakers.
  */
 void radio_enableAfOutput();
