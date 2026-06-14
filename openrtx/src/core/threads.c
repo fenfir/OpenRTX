@@ -13,6 +13,7 @@
 #include "interfaces/platform.h"
 #include "interfaces/delays.h"
 #include "interfaces/radio.h"
+#include "interfaces/watchdog.h"
 #include "core/event.h"
 #include "rtx/rtx.h"
 #include <string.h>
@@ -165,6 +166,12 @@ void *main_thread(void *arg)
     return NULL;
 }
 
+/*
+ * Default failsafe watchdog: no-op.  Targets with a hardware watchdog override
+ * watchdog_kick() in their driver (e.g. HD2 feeds the HR_C7000 WDT).
+ */
+__attribute__((weak)) void watchdog_kick(void) { }
+
 /**
  * \internal Thread for RTX management.
  */
@@ -176,6 +183,7 @@ void *rtx_threadFunc(void *arg)
 
     while(state.devStatus == RUNNING)
     {
+        watchdog_kick();      // system failsafe heartbeat (no-op without a WDT)
         rtx_task();
     }
 
