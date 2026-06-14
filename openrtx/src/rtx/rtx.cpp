@@ -10,6 +10,9 @@
 #include "rtx/rtx.h"
 #include "rtx/OpMode_FM.hpp"
 #include "rtx/OpMode_M17.hpp"
+#ifdef CONFIG_FM_BCAST
+#include "rtx/OpMode_FMBroadcast.hpp"
+#endif
 
 static pthread_mutex_t   *cfgMutex;     // Mutex for incoming config messages
 static const rtxStatus_t *newCnf;       // Pointer for incoming config messages
@@ -22,6 +25,9 @@ static OpMode     noMode;               // Empty opMode handler for opmode::NONE
 static OpMode_FM  fmMode;               // FM mode handler
 #ifdef CONFIG_M17
 static OpMode_M17 m17Mode;              // M17 mode handler
+#endif
+#ifdef CONFIG_FM_BCAST
+static OpMode_FMBroadcast fmBcastMode;  // Broadcast-FM mode handler
 #endif
 
 
@@ -89,6 +95,15 @@ void rtx_configure(const rtxStatus_t *cfg)
     pthread_mutex_unlock(cfgMutex);
 }
 
+void rtx_setFmExtras(uint8_t flags, uint8_t vox)
+{
+    // Bench/diag live override; small single-field pokes (the codeplug path is
+    // rtx_configure).  Applied on the next rtx_task update.
+    rtxStatus.toneBurst1750 = (flags & 0x01u) ? 1u : 0u;
+    rtxStatus.tailElim      = (flags & 0x02u) ? 1u : 0u;
+    rtxStatus.vox           = (vox > 5u) ? 5u : vox;
+}
+
 rtxStatus_t rtx_getCurrentStatus()
 {
     return rtxStatus;
@@ -144,6 +159,9 @@ void rtx_task()
                 case OPMODE_FM:   currMode = &fmMode;  break;
                 #ifdef CONFIG_M17
                 case OPMODE_M17:  currMode = &m17Mode; break;
+                #endif
+                #ifdef CONFIG_FM_BCAST
+                case OPMODE_FM_BCAST: currMode = &fmBcastMode; break;
                 #endif
                 default:   currMode = &noMode;
             }

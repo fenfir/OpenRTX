@@ -15,6 +15,27 @@ const uint16_t ctcss_tone[CTCSS_FREQ_NUM] =
     1966, 1995, 2035, 2065, 2107, 2181, 2257, 2291, 2336, 2418, 2503, 2541
 };
 
+/*
+ * Standard DCS codes as 9-bit octal values (e.g. 0023 -> 19); display as octal
+ * ("%03o").  Order/contents taken from the HD2 vendor firmware's DCS table so
+ * indices line up with the factory codeplug.  Each value Golay-encodes to the
+ * AT1846S CDCSS codeword via AT1846S::dcsCodeword().
+ */
+const uint16_t dcs_code[DCS_CODE_NUM] =
+{
+     19,  21,  22,  25,  26,  30,  35,  39,  41,  43,
+     44,  53,  57,  58,  59,  60,  76,  77,  78,  82,
+     85,  89,  90,  92,  99, 101, 106, 109, 110, 114,
+    117, 122, 124, 133, 138, 147, 149, 150, 163, 164,
+    165, 166, 169, 170, 173, 177, 179, 181, 182, 185,
+    188, 198, 201, 205, 213, 217, 218, 227, 230, 233,
+    238, 244, 245, 249, 265, 266, 267, 275, 281, 282,
+    293, 294, 308, 298, 300, 301, 306, 309, 310, 323,
+    326, 334, 339, 342, 346, 358, 373, 390, 394, 404,
+    407, 409, 410, 421, 428, 434, 436, 451, 458, 467,
+    473, 474, 476, 483, 492
+};
+
 channel_t cps_getDefaultChannel()
 {
     channel_t channel;

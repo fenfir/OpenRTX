@@ -354,6 +354,13 @@ int _ui_getRadioValueName(char *buf, uint8_t max_len, uint8_t index)
         return 0;
     }
 
+    // TX power level name ("Extra Low" / "Low" / "Medium" / "High")
+    if(index == R_TXPOWER)
+    {
+        sniprintf(buf, max_len, "%s", _ui_txPowerName(last_state.channel.power, false));
+        return 0;
+    }
+
     // Return an x.y string
     uint32_t value  = 0;
     switch(index)
@@ -476,6 +483,16 @@ int _ui_getFMValueName(char* buf, uint8_t max_len, uint8_t index)
                     _ui_getToneEnabledString(last_state.channel.fm.txToneEn,
                                              last_state.channel.fm.rxToneEn,
                                              false));
+            break;
+
+        case Squelch_Level:
+            sniprintf(buf, max_len, "%d", last_state.settings.sqlLevel);
+            break;
+
+        case Bandwidth_Sel:
+            /* channel.bandwidth: BW_12_5 == 0, BW_25 == 1 (rtx.h) */
+            sniprintf(buf, max_len, "%s",
+                    last_state.channel.bandwidth ? "25 kHz" : "12.5 kHz");
             break;
     }
 

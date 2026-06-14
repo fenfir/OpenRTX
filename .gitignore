@@ -80,3 +80,4 @@ scripts/get_demod_log
 
 # OpenRTX Codeplugs
 *.rtxc
+platform/targets/HD2/build_version.h

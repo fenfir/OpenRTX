@@ -13,6 +13,7 @@
 #include "interfaces/platform.h"
 #include "interfaces/delays.h"
 #include "interfaces/radio.h"
+#include "interfaces/watchdog.h"
 #include "core/event.h"
 #include "rtx/rtx.h"
 #include <string.h>
@@ -76,10 +77,17 @@ void *ui_threadFunc(void *arg)
             rtx_cfg.txPower     = state.channel.power;
             rtx_cfg.sqlLevel    = state.settings.sqlLevel;
             rtx_cfg.rxToneEn    = state.channel.fm.rxToneEn;
-            rtx_cfg.rxTone      = ctcss_tone[state.channel.fm.rxTone];
+            rtx_cfg.rxToneType  = state.channel.fm.rxToneType;
+            rtx_cfg.rxTone      = (state.channel.fm.rxToneType == TONE_CTCSS)
+                                ? ctcss_tone[state.channel.fm.rxTone]
+                                : dcs_code[state.channel.fm.rxTone];
             rtx_cfg.txToneEn    = state.channel.fm.txToneEn;
-            rtx_cfg.txTone      = ctcss_tone[state.channel.fm.txTone];
+            rtx_cfg.txToneType  = state.channel.fm.txToneType;
+            rtx_cfg.txTone      = (state.channel.fm.txToneType == TONE_CTCSS)
+                                ? ctcss_tone[state.channel.fm.txTone]
+                                : dcs_code[state.channel.fm.txTone];
             rtx_cfg.toneEn      = state.tone_enabled;
+            rtx_cfg.vox         = state.settings.voxLevel;
 
             // Enable Tx if channel allows it and we are in UI main screen
             rtx_cfg.txDisable = state.channel.rx_only || state.txDisable;
@@ -158,6 +166,12 @@ void *main_thread(void *arg)
     return NULL;
 }
 
+/*
+ * Default failsafe watchdog: no-op.  Targets with a hardware watchdog override
+ * watchdog_kick() in their driver (e.g. HD2 feeds the HR_C7000 WDT).
+ */
+__attribute__((weak)) void watchdog_kick(void) { }
+
 /**
  * \internal Thread for RTX management.
  */
@@ -169,6 +183,7 @@ void *rtx_threadFunc(void *arg)
 
     while(state.devStatus == RUNNING)
     {
+        watchdog_kick();      // system failsafe heartbeat (no-op without a WDT)
         rtx_task();
     }
 

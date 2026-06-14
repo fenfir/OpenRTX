@@ -164,7 +164,25 @@ const char *settings_radio_items[] =
     "Offset",
     "Direction",
     "Step",
+    "TX Power",
 };
+
+// TX power levels (codeplug txPower mW), ordered low -> high.  radio_HD2.cpp
+// maps each sentinel to an APC DAC drive + AT1846S padrv (Extra Low..High).
+const uint32_t tx_power_levels[] = { 100, 1000, 2500, 5000 };
+const uint8_t  tx_power_num = sizeof(tx_power_levels) / sizeof(tx_power_levels[0]);
+
+const char *_ui_txPowerName(uint32_t mW, bool abbrev)
+{
+    switch(mW)
+    {
+        case 100:  return abbrev ? "E" : "Extra Low";
+        case 1000: return abbrev ? "L" : "Low";
+        case 2500: return abbrev ? "M" : "Medium";
+        case 5000: return abbrev ? "H" : "High";
+        default:   return abbrev ? "?" : "?";
+    }
+}
 
 const char * settings_m17_items[] =
 {
@@ -177,7 +195,9 @@ const char * settings_m17_items[] =
 const char* settings_fm_items[] =
 {
     "CTCSS Tone",
-    "CTCSS En."
+    "CTCSS En.",
+    "Squelch",
+    "Bandwidth"
 };
 
 const char * settings_accessibility_items[] =
@@ -473,6 +493,60 @@ static void _ui_calculateLayout(layout_t *layout)
     };
 
     memcpy(layout, &new_layout, sizeof(layout_t));
+}
+
+/* HD2 FM broadcast radio: g_fm_active = UI in the FM screen; g_fm_test_freq =
+ * tune target (Hz); g_fm_rssi packs the RDA5802E status (low byte = RSSI[6:0],
+ * bit8 = STC lock), updated by the tuner HAL.  The broadcast tuner is driven by
+ * OpMode_FMBroadcast (OPMODE_FM_BCAST), selected by posting a broadcast rtx
+ * config from the FM screen below. */
+extern volatile uint32_t g_fm_active;
+extern volatile uint32_t g_fm_test_freq;
+extern volatile uint32_t g_fm_rssi;
+
+/* Post a broadcast-FM rtx config (OPMODE_FM_BCAST + the current tune freq) so
+ * rtx_task switches to OpMode_FMBroadcast.  Static cfg: rtx_configure() keeps
+ * the pointer until rtx_task copies it. */
+static void _ui_fmBcastConfigure(void)
+{
+    static rtxStatus_t bcastCfg;
+    bcastCfg             = rtx_getCurrentStatus();
+    bcastCfg.opMode      = OPMODE_FM_BCAST;
+    bcastCfg.rxFrequency = g_fm_test_freq;
+    bcastCfg.txDisable   = 1;                 /* broadcast is RX-only */
+    rtx_configure(&bcastCfg);
+}
+
+static void _ui_drawFMRadio(ui_state_t* ui_state)
+{
+    // Mirror the main VFO screen layout so broadcast looks like the idle FM
+    // screen: shared top bar, a mode line, the big frequency, and the same
+    // bottom S-meter.
+    gfx_clearScreen();
+    _ui_drawMainTop(ui_state);
+
+    // Mode line (same slot as _ui_drawModeInfo): label this as broadcast FM.
+    gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER, color_white,
+              "FM RADIO");
+
+    // Big frequency, same slot/font as the main VFO screen (0.1 MHz steps).
+    uint32_t f = g_fm_test_freq;                 /* Hz */
+    gfx_print(layout.line3_large_pos, layout.line3_large_font, TEXT_ALIGN_CENTER,
+              color_white, "%lu.%01lu",
+              (unsigned long)(f / 1000000u),
+              (unsigned long)((f % 1000000u) / 100000u));
+
+    // S-meter, identical to _ui_drawMainBottom (FM case): map the RDA5802E
+    // RSSI (low byte, 0..127) onto the dBm scale the meter expects
+    // (-137 + raw, matching the AT1846S convention).  Broadcast has no
+    // squelch, so the squelch bar is suppressed (level 0).
+    uint16_t meter_width  = CONFIG_SCREEN_WIDTH - 2 * layout.horizontal_pad;
+    uint16_t meter_height = layout.bottom_h;
+    point_t  meter_pos    = { layout.horizontal_pad,
+                              CONFIG_SCREEN_HEIGHT - meter_height - layout.bottom_pad };
+    rssi_t rssi = (rssi_t)(-137 + (int)(g_fm_rssi & 0xffu));
+    gfx_drawSmeter(meter_pos, meter_width, meter_height, rssi, 0,
+                   last_state.volume, true, yellow_fab413);
 }
 
 static void _ui_drawLowBatteryScreen()
@@ -1008,12 +1082,20 @@ static void _ui_fsm_menuMacro(kbd_msg_t msg, bool *sync_rtx)
 
             switch(state.channel.power)
             {
-                case 1000:
+                case 100:                       // Extra Low -> Low
+                    state.channel.power = 1000;
+                    break;
+
+                case 1000:                      // Low -> Medium
                     state.channel.power = 2500;
                     break;
 
-                case 2500:
+                case 2500:                      // Medium -> High
                     state.channel.power = 5000;
+                    break;
+
+                case 5000:                      // High -> Extra Low (wrap)
+                    state.channel.power = 100;
                     break;
 
                 default:
@@ -1623,6 +1705,19 @@ void ui_updateFSM(bool *sync_rtx)
                             f1Handled = true;
                         }
                     }
+                    else if(msg.keys & KEY_F3)
+                    {
+                        // SK2: open the FM broadcast radio screen + start RX
+                        ui_state.last_main_state = state.ui_screen;
+                        state.ui_screen = FM_RADIO;
+                        // Restore the last broadcast freq saved in settings
+                        // (persists across power cycle; defaults to 103.6 MHz).
+                        if((state.settings.fm_bcast_freq >=  87500000u) &&
+                           (state.settings.fm_bcast_freq <= 108000000u))
+                            g_fm_test_freq = state.settings.fm_bcast_freq;
+                        g_fm_active = 1;
+                        _ui_fmBcastConfigure();   // -> OpMode_FMBroadcast
+                    }
                     else if(input_isNumberPressed(msg))
                     {
                         // Open Frequency input screen
@@ -1646,6 +1741,33 @@ void ui_updateFSM(bool *sync_rtx)
                     }
                 }
             }
+                break;
+            // FM broadcast radio screen (HD2)
+            case FM_RADIO:
+                if(msg.keys & (KEY_F3 | KEY_ESC))
+                {
+                    // Stop FM RX and return to VFO; sync_rtx restores the
+                    // channel config (opMode back to FM) -> OpMode_FMBroadcast
+                    // disable() powers the tuner down.
+                    g_fm_active = 0;
+                    state.settings.fm_bcast_freq = g_fm_test_freq;  // persist
+                    state.ui_screen = MAIN_VFO;
+                    *sync_rtx = true;
+                }
+                else if(msg.keys & KEY_UP)
+                {
+                    if(g_fm_test_freq < 108000000u)
+                        g_fm_test_freq += 100000u;   // +0.1 MHz
+                    state.settings.fm_bcast_freq = g_fm_test_freq;  // persist
+                    _ui_fmBcastConfigure();          // re-tune via the OpMode
+                }
+                else if(msg.keys & KEY_DOWN)
+                {
+                    if(g_fm_test_freq > 87500000u)
+                        g_fm_test_freq -= 100000u;   // -0.1 MHz
+                    state.settings.fm_bcast_freq = g_fm_test_freq;  // persist
+                    _ui_fmBcastConfigure();
+                }
                 break;
             // VFO frequency input screen
             case MAIN_VFO_INPUT:
@@ -2284,6 +2406,23 @@ void ui_updateFSM(bool *sync_rtx)
                                 state.step_index %= n_freq_steps;
                             }
                             break;
+                        case R_TXPOWER:
+                        {
+                            // Cycle the TX power level (Extra Low..High); the
+                            // change reaches the radio via the rtx reconfigure.
+                            uint8_t idx = 0;
+                            for(uint8_t i = 0; i < tx_power_num; ++i)
+                                if(state.channel.power == tx_power_levels[i]) { idx = i; break; }
+
+                            if(msg.keys & KEY_UP || msg.keys & KEY_RIGHT || msg.keys & KNOB_RIGHT)
+                                idx = (idx + 1) % tx_power_num;
+                            else if(msg.keys & KEY_DOWN || msg.keys & KEY_LEFT || msg.keys & KNOB_LEFT)
+                                idx = (idx + tx_power_num - 1) % tx_power_num;
+
+                            state.channel.power = tx_power_levels[idx];
+                            *sync_rtx = true;
+                        }
+                            break;
                         default:
                             state.ui_screen = SETTINGS_RADIO;
                     }
@@ -2494,6 +2633,34 @@ void ui_updateFSM(bool *sync_rtx)
 
                             *sync_rtx = true;
                             break;
+                        case Squelch_Level:
+                            if (msg.keys & KEY_DOWN || msg.keys & KNOB_LEFT)
+                            {
+                                if (state.settings.sqlLevel > 0)
+                                    state.settings.sqlLevel--;
+                            }
+                            else if (msg.keys & KEY_UP || msg.keys & KNOB_RIGHT)
+                            {
+                                if (state.settings.sqlLevel < 15)
+                                    state.settings.sqlLevel++;
+                            } else if (msg.keys & KEY_ENTER) {
+                                ui_state.edit_mode = false;
+                            }
+                            *sync_rtx = true;
+                            break;
+                        case Bandwidth_Sel:
+                            // Only two values (BW_12_5/BW_25) -- any adjust key toggles.
+                            if ((msg.keys & KEY_DOWN) || (msg.keys & KNOB_LEFT) ||
+                                (msg.keys & KEY_UP)   || (msg.keys & KNOB_RIGHT))
+                            {
+                                state.channel.bandwidth ^= 1u;
+                            }
+                            else if (msg.keys & KEY_ENTER)
+                            {
+                                ui_state.edit_mode = false;
+                            }
+                            *sync_rtx = true;
+                            break;
                     }
                 }
                 else if (msg.keys & KEY_UP || msg.keys & KNOB_LEFT)
@@ -2591,6 +2758,16 @@ void ui_updateFSM(bool *sync_rtx)
             state.txDisable = true;
             *sync_rtx = true;
         }
+
+        // HD2 broadcast FM owns the rtx config while its screen is open: it
+        // posts OPMODE_FM_BCAST via _ui_fmBcastConfigure (entry + UP/DOWN).
+        // Suppress the generic channel-sync here so threads.c does not re-post
+        // the channel (OPMODE_FM) and revert broadcast -- which runs
+        // OpMode_FMBroadcast::disable(), powers the RDA5802E down, and leaves
+        // it silent until a manual re-tune.  (Exit sets ui_screen=MAIN_VFO
+        // first, so the restore-to-FM sync still runs.)
+        if(state.ui_screen == FM_RADIO)
+            *sync_rtx = false;
         if (!f1Handled && (msg.keys & KEY_F1) && (state.settings.vpLevel > vpBeep))
         {
             vp_replayLastPrompt();
@@ -2654,6 +2831,10 @@ bool ui_updateGUI()
         // VFO main screen
         case MAIN_VFO:
             _ui_drawMainVFO(&ui_state);
+            break;
+        // FM broadcast radio screen (HD2)
+        case FM_RADIO:
+            _ui_drawFMRadio(&ui_state);
             break;
         // VFO frequency input screen
         case MAIN_VFO_INPUT:
