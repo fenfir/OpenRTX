@@ -45,6 +45,19 @@ OpMode_FM::~OpMode_FM()
 {
 }
 
+/*
+ * Weak default for the hardware RF-squelch hook: reports "no hardware RF
+ * squelch", so update() below uses the radio_getRssi() threshold.  Targets
+ * whose transceiver exposes its own squelch comparator (with on-chip
+ * hysteresis) provide a strong override in their radio_*.c driver -- e.g. HD2
+ * returns the AT1846S sq_cmp, which is far steadier than our raw RSSI read.
+ */
+extern "C" __attribute__((weak)) bool radio_checkRxRfSquelch(bool *open)
+{
+    (void) open;
+    return false;
+}
+
 void OpMode_FM::enable()
 {
     // When starting, close squelch and prepare for entering in RX mode.
@@ -78,20 +91,31 @@ void OpMode_FM::update(rtxStatus_t *const status, const bool newCfg)
     // RX logic
     if(status->opStatus == RX)
     {
-        // RF squelch mechanism
-        // This turns squelch (0 to 15) into RSSI (-127.0dbm to -61dbm)
-        rssi_t squelch = -127 + (status->sqlLevel * 66) / 15;
-        rssi_t rssi    = rtx_getRssi();
+        // RF squelch mechanism.  Prefer the transceiver's own hardware RF
+        // squelch (a steady on-chip RSSI+noise decision) when the device
+        // provides one; otherwise fall back to thresholding the filtered RSSI.
+        bool hwSqlOpen;
+        if(radio_checkRxRfSquelch(&hwSqlOpen))
+        {
+            rfSqlOpen = hwSqlOpen;
+        }
+        else
+        {
+            // This turns squelch (0 to 15) into RSSI (-127.0dbm to -61dbm)
+            rssi_t squelch = -127 + (status->sqlLevel * 66) / 15;
+            rssi_t rssi    = rtx_getRssi();
 
-        // Provide hysteresis: only change state when the RSSI moves more than
-        // 4 dBm beyond the squelch setting (an 8 dBm open/close window).
-        // Widened from +-1 dBm (2026-06-10): a debug-cable ground loop bounces
-        // the RSSI several dB, and the narrow +-1 window let rfSqlOpen flicker,
-        // which thrashed the UI standby/backlight on every status tick (the
-        // "RSSI haywire -> screen flips -> lockup" path).  8 dBm absorbs the
-        // bench noise without hurting real FM-voice squelch behaviour.
-        if((rfSqlOpen == false) && (rssi > (squelch + 4))) rfSqlOpen = true;
-        if((rfSqlOpen == true)  && (rssi < (squelch - 4))) rfSqlOpen = false;
+            // Provide hysteresis: only change state when the RSSI moves more
+            // than 4 dBm beyond the squelch setting (an 8 dBm open/close
+            // window).  Widened from +-1 dBm (2026-06-10): a debug-cable ground
+            // loop bounces the RSSI several dB, and the narrow +-1 window let
+            // rfSqlOpen flicker, which thrashed the UI standby/backlight on
+            // every status tick (the "RSSI haywire -> screen flips -> lockup"
+            // path).  8 dBm absorbs the bench noise without hurting real
+            // FM-voice squelch behaviour.
+            if((rfSqlOpen == false) && (rssi > (squelch + 4))) rfSqlOpen = true;
+            if((rfSqlOpen == true)  && (rssi < (squelch - 4))) rfSqlOpen = false;
+        }
 
         // Local flags for current RF and tone squelch status
         bool rfSql   = ((status->rxToneEn == 0) && (rfSqlOpen == true));

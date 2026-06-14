@@ -58,6 +58,20 @@ void radio_setOpmode(const enum opmode mode);
 bool radio_checkRxDigitalSquelch();
 
 /**
+ * Hardware RF-squelch (carrier-detect) hook.  Transceivers that compute their
+ * own RSSI+noise squelch decision (with on-chip hysteresis) override this to
+ * surface that decision, which is far steadier than thresholding radio_getRssi()
+ * in OpMode_FM.  The default (weak) implementation reports "no hardware RF
+ * squelch", so OpMode_FM falls back to the RSSI-threshold path unchanged.
+ *
+ * @param open: receives the hardware RF-squelch state (true = open / carrier
+ *              present) when the device supports it.
+ * @return true if the device provides a hardware RF squelch (\p open is valid);
+ *         false to use the radio_getRssi() threshold fallback.
+ */
+bool radio_checkRxRfSquelch(bool *open);
+
+/**
  * Enable AF output towards the speakers.
  */
 void radio_enableAfOutput();
