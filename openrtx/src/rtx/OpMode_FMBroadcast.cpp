@@ -58,7 +58,8 @@ void OpMode_FMBroadcast::update(rtxStatus_t *const status, const bool newCfg)
     (void) newCfg;
 
     // Re-tune when the UI changes the frequency (rxFrequency carries the
-    // broadcast tune target in Hz; the tuner HAL takes kHz).
+    // broadcast tune target in Hz; the tuner HAL takes kHz).  curFreq=0 after
+    // enable() forces the first tune.
     if(status->rxFrequency != curFreq)
     {
         tuner_tune(status->rxFrequency / 1000u);

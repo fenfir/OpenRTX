@@ -2743,6 +2743,16 @@ void ui_updateFSM(bool *sync_rtx)
             state.txDisable = true;
             *sync_rtx = true;
         }
+
+        // HD2 broadcast FM owns the rtx config while its screen is open: it
+        // posts OPMODE_FM_BCAST via _ui_fmBcastConfigure (entry + UP/DOWN).
+        // Suppress the generic channel-sync here so threads.c does not re-post
+        // the channel (OPMODE_FM) and revert broadcast -- which runs
+        // OpMode_FMBroadcast::disable(), powers the RDA5802E down, and leaves
+        // it silent until a manual re-tune.  (Exit sets ui_screen=MAIN_VFO
+        // first, so the restore-to-FM sync still runs.)
+        if(state.ui_screen == FM_RADIO)
+            *sync_rtx = false;
         if (!f1Handled && (msg.keys & KEY_F1) && (state.settings.vpLevel > vpBeep))
         {
             vp_replayLastPrompt();
