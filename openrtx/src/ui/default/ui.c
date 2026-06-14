@@ -517,29 +517,36 @@ static void _ui_fmBcastConfigure(void)
     rtx_configure(&bcastCfg);
 }
 
-static void _ui_drawFMRadio()
+static void _ui_drawFMRadio(ui_state_t* ui_state)
 {
+    // Mirror the main VFO screen layout so broadcast looks like the idle FM
+    // screen: shared top bar, a mode line, the big frequency, and the same
+    // bottom S-meter.
     gfx_clearScreen();
-    point_t title = {0, 20};
-    gfx_print(title, FONT_SIZE_8PT, TEXT_ALIGN_CENTER, color_white, "FM RADIO");
+    _ui_drawMainTop(ui_state);
 
+    // Mode line (same slot as _ui_drawModeInfo): label this as broadcast FM.
+    gfx_print(layout.line2_pos, layout.line2_font, TEXT_ALIGN_CENTER, color_white,
+              "FM RADIO");
+
+    // Big frequency, same slot/font as the main VFO screen (0.1 MHz steps).
     uint32_t f = g_fm_test_freq;                 /* Hz */
-    point_t fp = {0, 56};
-    gfx_print(fp, FONT_SIZE_12PT, TEXT_ALIGN_CENTER, color_white,
-              "%lu.%01lu MHz",
+    gfx_print(layout.line3_large_pos, layout.line3_large_font, TEXT_ALIGN_CENTER,
+              color_white, "%lu.%01lu",
               (unsigned long)(f / 1000000u),
               (unsigned long)((f % 1000000u) / 100000u));
 
-    point_t rp = {0, 86};
-    /* RDA5802E status from the FM worker: low byte = RSSI[6:0] (read reg 0x0B),
-     * bit8 = STC (tune complete / locked). Show the level + an "L" when locked. */
-    gfx_print(rp, FONT_SIZE_8PT, TEXT_ALIGN_CENTER, color_white,
-              "RSSI %lu%s", (unsigned long)(g_fm_rssi & 0xffu),
-              (g_fm_rssi & 0x100u) ? " L" : "");
-
-    point_t hp = {0, 116};
-    gfx_print(hp, FONT_SIZE_6PT, TEXT_ALIGN_CENTER, color_white,
-              "UP/DN tune   SK2/ESC exit");
+    // S-meter, identical to _ui_drawMainBottom (FM case): map the RDA5802E
+    // RSSI (low byte, 0..127) onto the dBm scale the meter expects
+    // (-137 + raw, matching the AT1846S convention).  Broadcast has no
+    // squelch, so the squelch bar is suppressed (level 0).
+    uint16_t meter_width  = CONFIG_SCREEN_WIDTH - 2 * layout.horizontal_pad;
+    uint16_t meter_height = layout.bottom_h;
+    point_t  meter_pos    = { layout.horizontal_pad,
+                              CONFIG_SCREEN_HEIGHT - meter_height - layout.bottom_pad };
+    rssi_t rssi = (rssi_t)(-137 + (int)(g_fm_rssi & 0xffu));
+    gfx_drawSmeter(meter_pos, meter_width, meter_height, rssi, 0,
+                   last_state.volume, true, yellow_fab413);
 }
 
 static void _ui_drawLowBatteryScreen()
@@ -1703,6 +1710,11 @@ void ui_updateFSM(bool *sync_rtx)
                         // SK2: open the FM broadcast radio screen + start RX
                         ui_state.last_main_state = state.ui_screen;
                         state.ui_screen = FM_RADIO;
+                        // Restore the last broadcast freq saved in settings
+                        // (persists across power cycle; defaults to 103.6 MHz).
+                        if((state.settings.fm_bcast_freq >=  87500000u) &&
+                           (state.settings.fm_bcast_freq <= 108000000u))
+                            g_fm_test_freq = state.settings.fm_bcast_freq;
                         g_fm_active = 1;
                         _ui_fmBcastConfigure();   // -> OpMode_FMBroadcast
                     }
@@ -1738,6 +1750,7 @@ void ui_updateFSM(bool *sync_rtx)
                     // channel config (opMode back to FM) -> OpMode_FMBroadcast
                     // disable() powers the tuner down.
                     g_fm_active = 0;
+                    state.settings.fm_bcast_freq = g_fm_test_freq;  // persist
                     state.ui_screen = MAIN_VFO;
                     *sync_rtx = true;
                 }
@@ -1745,12 +1758,14 @@ void ui_updateFSM(bool *sync_rtx)
                 {
                     if(g_fm_test_freq < 108000000u)
                         g_fm_test_freq += 100000u;   // +0.1 MHz
+                    state.settings.fm_bcast_freq = g_fm_test_freq;  // persist
                     _ui_fmBcastConfigure();          // re-tune via the OpMode
                 }
                 else if(msg.keys & KEY_DOWN)
                 {
                     if(g_fm_test_freq > 87500000u)
                         g_fm_test_freq -= 100000u;   // -0.1 MHz
+                    state.settings.fm_bcast_freq = g_fm_test_freq;  // persist
                     _ui_fmBcastConfigure();
                 }
                 break;
@@ -2819,7 +2834,7 @@ bool ui_updateGUI()
             break;
         // FM broadcast radio screen (HD2)
         case FM_RADIO:
-            _ui_drawFMRadio();
+            _ui_drawFMRadio(&ui_state);
             break;
         // VFO frequency input screen
         case MAIN_VFO_INPUT:

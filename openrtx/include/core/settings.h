@@ -51,6 +51,7 @@ typedef struct
     bool    showBatteryIcon;      // Battery display true: icon, false: percentage
     bool    gpsSetTime;           // Use GPS to ajust RTC time
     char    M17_meta_text[53];    // M17 Meta Text to send
+    uint32_t fm_bcast_freq;       // Last broadcast-FM tune frequency, Hz
 }
 __attribute__((packed)) settings_t;
 
@@ -79,6 +80,7 @@ static const settings_t default_settings =
     false,                        // Display battery icon
     false,                        // Update RTC with GPS
     "OpenRTX",                    // Default M17 meta text
+    103600000u,                   // Broadcast-FM tune freq (103.6 MHz)
 };
 
 #endif /* SETTINGS_H */
