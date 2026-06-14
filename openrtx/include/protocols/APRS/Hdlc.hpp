@@ -54,6 +54,8 @@ public:
     int flagsSeen() const { return flagsSeen_; }
     /// Largest frame assembled, in bytes (bring-up diagnostic).
     int maxFrameLen() const { return maxLen_; }
+    /// Current in-progress frame length, in bytes (capture-trigger diagnostic).
+    int curFrameLen() const { return flen_; }
     /// Longest frame assembled between flags, FCS pass OR fail (bring-up
     /// diagnostic: lets a host diff a near-miss against the expected bytes).
     const uint8_t* lastRawFrame() const { return raw_; }

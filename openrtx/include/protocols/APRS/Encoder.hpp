@@ -56,6 +56,13 @@ public:
      */
     bool nextSample(int16_t& out);
 
+    /// Number of NRZI symbols in the built frame (for tone-generator TX, where
+    /// the modulator is driven one symbol at a time rather than per PCM sample).
+    int numSymbols() const { return nsym_; }
+
+    /// NRZI symbol \p i: true = mark (1200 Hz), false = space (2200 Hz).
+    bool symbolIsMark(int i) const { return (i >= 0 && i < nsym_) && (sym_[i] != 0); }
+
 private:
     uint8_t  sym_[MAX_SYMBOLS];  ///< NRZI symbol levels (1 = mark, 0 = space).
     int      nsym_;
