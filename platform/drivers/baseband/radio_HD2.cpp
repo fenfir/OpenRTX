@@ -990,6 +990,19 @@ extern "C" bool hd2_rx_carrier_detected(void)
 }
 
 /*
+ * Strong override of the OpMode_FM hardware RF-squelch hook (radio.h): the HD2
+ * has a real on-chip squelch comparator, so report sq_cmp instead of letting
+ * OpMode_FM threshold the jittery raw RSSI.  Lets HD2 use the portable
+ * OpMode_FM RX path without re-introducing the squelch flutter (the same fix
+ * hd2_rtx.c applies today via rtx_rxSquelchOpen).
+ */
+extern "C" bool radio_checkRxRfSquelch(bool *open)
+{
+    *open = hd2_rx_carrier_detected();
+    return true;
+}
+
+/*
  * One-shot full AT1846S RX bring-up from firmware (loader op 'I', at_reinit):
  * chip init() (vendor sequence + GDx supplement; ~700 ms of calibration
  * delays -- BLOCKS the calling diag thread that long) + FM filter bank 0 +
