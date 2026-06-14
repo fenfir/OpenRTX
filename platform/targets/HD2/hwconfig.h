@@ -58,6 +58,11 @@ extern const struct nvmDevice eflash;
  * Gates state.c / UI clock display on platform_getCurrentTime(). */
 #define CONFIG_RTC
 
+/* Broadcast-FM receive: dedicated RDA5802E tuner chip (GPIOA I2C 0x20), driven
+ * by OpMode_FMBroadcast via the tuner HAL (RDA5802E_HD2.c implements tuner_*).
+ * Enables the OPMODE_FM_BCAST dispatch in rtx.cpp. */
+#define CONFIG_FM_BCAST
+
 #ifdef __cplusplus
 }
 #endif

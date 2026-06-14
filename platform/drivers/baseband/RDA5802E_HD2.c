@@ -34,7 +34,13 @@
 
 #include "drivers/i2c_csky.h"
 #include "interfaces/delays.h"
+#include "interfaces/tuner.h"
 #include "hd2_regs.h"
+
+/* AT1846S chip-side AF mute (radio_HD2.cpp): the 2-way AFOUT and the broadcast
+ * tuner share the analog node into the speaker amp, so mute the transceiver
+ * demod while broadcast audio plays (its noise would otherwise mix in). */
+extern uint16_t hd2_at1846s_afmute(uint32_t mute);
 
 /* 8-bit write address (sequential mode) of the RDA5802E. */
 #define FM_I2C_ADDR   0x20u
@@ -171,4 +177,43 @@ void fm_broadcast_powerdown(void)
     fm_write_02_03(0xc200u, 0x0000u);
     gpio_atomic_set(&GPIOB_DR, AUDIO_ROUTE_BIT);     /* PTB10 HIGH = route off */
     gpio_atomic_set(&GPIOB_DR, FM_ENABLE_BIT);       /* PTB20 HIGH = standby   */
+}
+
+/* ------------------------------------------------------------------------- *
+ *  Broadcast-FM tuner HAL (interfaces/tuner.h) -- HD2 = RDA5802E.            *
+ *  Strong overrides of the weak defaults in OpMode_FMBroadcast.cpp, mapping  *
+ *  the portable tuner_* HAL onto this driver's fm_broadcast_* ops + the      *
+ *  AT1846S AF mute (shared analog node).                                     *
+ * ------------------------------------------------------------------------- */
+
+void tuner_init(void)
+{
+    fm_broadcast_init();
+}
+
+void tuner_powerUp(void)
+{
+    fm_broadcast_powerup();
+    fm_broadcast_route_speaker();
+    (void)hd2_at1846s_afmute(1);     /* silence the 2-way demod on the shared node */
+}
+
+void tuner_powerDown(void)
+{
+    fm_broadcast_powerdown();        /* PTB10/PTB20 high: standby, audio back to 2-way */
+}
+
+void tuner_tune(uint32_t freq_khz)
+{
+    (void)fm_broadcast_tune(freq_khz);
+}
+
+uint8_t tuner_rssi(void)
+{
+    return fm_broadcast_rssi();
+}
+
+bool tuner_getStatus(bool *tuned, uint16_t *channel)
+{
+    return fm_broadcast_status(tuned, channel);
 }
