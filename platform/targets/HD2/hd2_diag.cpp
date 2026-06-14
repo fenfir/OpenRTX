@@ -75,8 +75,10 @@ extern "C" void clk_restore_prepll(void);
 extern "C" void     hd2_at1846s_reinit(uint32_t freq_hz);  /* BLOCKS ~700 ms (VCO cal) */
 extern "C" void     hd2_at1846s_profile(uint32_t profile); /* 0=vendor 1=GD77 gains   */
 extern "C" uint16_t hd2_at1846s_afmute(uint32_t mute);     /* reg0x30 bit7 RMW        */
-extern "C" uint32_t hd2_rtx_getRxFreq(void);               /* current RX freq, Hz     */
-extern "C" void     hd2_rtx_setFmExtras(uint8_t flags, uint8_t vox); /* 'e' op       */
+/* RX freq + FM-extras live-override now go through the rtx API (rtx/rtx.h):
+ * rtx_getCurrentStatus().rxFrequency and rtx_setFmExtras() -- the rtx state is
+ * private to rtx.cpp after the OpMode_FM convergence. */
+#include "rtx/rtx.h"
 
 /* CPU->codec-DAC PCM stream experiment (hd2_pcm_stream.cpp).  Streams a sine
  * through the SAHB PCM playback window via the vec-0x3b frame IRQ and reports
@@ -442,7 +444,7 @@ void *diagThreadFunc(void *)
             {                                      // flags bit0=1750 burst, bit1=tail elim; vox 0..5
                 uint8_t flags, vox;
                 if(!rxByte(flags) || !rxByte(vox)) break;
-                hd2_rtx_setFmExtras(flags, vox);
+                rtx_setFmExtras(flags, vox);
                 tx('k');
                 break;
             }
@@ -664,7 +666,7 @@ void *diagThreadFunc(void *)
             case 'I':                              // at_reinit -> "REINIT freq=<hz>\r\n"
             {                                      // one-shot full AT1846S bring-up; BLOCKS this
                                                    // thread ~700 ms (VCO calibration delays).
-                uint32_t f = hd2_rtx_getRxFreq();
+                uint32_t f = rtx_getCurrentStatus().rxFrequency;
                 hd2_at1846s_reinit(f);
                 char buf[48];
                 snprintf(buf, sizeof buf, "REINIT freq=%lu\r\n", (unsigned long)f);

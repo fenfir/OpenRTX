@@ -495,12 +495,27 @@ static void _ui_calculateLayout(layout_t *layout)
     memcpy(layout, &new_layout, sizeof(layout_t));
 }
 
-/* HD2 FM broadcast radio: controls live in hd2_fm_broadcast.cpp / radio_HD2.cpp.
- * g_fm_active gates the FM worker thread; g_fm_test_freq is the tune target (Hz);
- * g_fm_rssi packs the RDA5802E status: low byte = RSSI[6:0], bit8 = STC (lock). */
+/* HD2 FM broadcast radio: g_fm_active = UI in the FM screen; g_fm_test_freq =
+ * tune target (Hz); g_fm_rssi packs the RDA5802E status (low byte = RSSI[6:0],
+ * bit8 = STC lock), updated by the tuner HAL.  The broadcast tuner is driven by
+ * OpMode_FMBroadcast (OPMODE_FM_BCAST), selected by posting a broadcast rtx
+ * config from the FM screen below. */
 extern volatile uint32_t g_fm_active;
 extern volatile uint32_t g_fm_test_freq;
 extern volatile uint32_t g_fm_rssi;
+
+/* Post a broadcast-FM rtx config (OPMODE_FM_BCAST + the current tune freq) so
+ * rtx_task switches to OpMode_FMBroadcast.  Static cfg: rtx_configure() keeps
+ * the pointer until rtx_task copies it. */
+static void _ui_fmBcastConfigure(void)
+{
+    static rtxStatus_t bcastCfg;
+    bcastCfg             = rtx_getCurrentStatus();
+    bcastCfg.opMode      = OPMODE_FM_BCAST;
+    bcastCfg.rxFrequency = g_fm_test_freq;
+    bcastCfg.txDisable   = 1;                 /* broadcast is RX-only */
+    rtx_configure(&bcastCfg);
+}
 
 static void _ui_drawFMRadio()
 {
@@ -1689,6 +1704,7 @@ void ui_updateFSM(bool *sync_rtx)
                         ui_state.last_main_state = state.ui_screen;
                         state.ui_screen = FM_RADIO;
                         g_fm_active = 1;
+                        _ui_fmBcastConfigure();   // -> OpMode_FMBroadcast
                     }
                     else if(input_isNumberPressed(msg))
                     {
@@ -1718,19 +1734,24 @@ void ui_updateFSM(bool *sync_rtx)
             case FM_RADIO:
                 if(msg.keys & (KEY_F3 | KEY_ESC))
                 {
-                    // Stop FM RX and return to VFO
+                    // Stop FM RX and return to VFO; sync_rtx restores the
+                    // channel config (opMode back to FM) -> OpMode_FMBroadcast
+                    // disable() powers the tuner down.
                     g_fm_active = 0;
                     state.ui_screen = MAIN_VFO;
+                    *sync_rtx = true;
                 }
                 else if(msg.keys & KEY_UP)
                 {
                     if(g_fm_test_freq < 108000000u)
                         g_fm_test_freq += 100000u;   // +0.1 MHz
+                    _ui_fmBcastConfigure();          // re-tune via the OpMode
                 }
                 else if(msg.keys & KEY_DOWN)
                 {
                     if(g_fm_test_freq > 87500000u)
                         g_fm_test_freq -= 100000u;   // -0.1 MHz
+                    _ui_fmBcastConfigure();
                 }
                 break;
             // VFO frequency input screen

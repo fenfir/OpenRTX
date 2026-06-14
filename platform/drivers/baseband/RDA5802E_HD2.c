@@ -42,6 +42,12 @@
  * demod while broadcast audio plays (its noise would otherwise mix in). */
 extern uint16_t hd2_at1846s_afmute(uint32_t mute);
 
+/* UI status bridge (hd2_fm_broadcast.cpp): the tuner HAL keeps these fed so the
+ * FM screen shows a live level/lock without the UI reaching into this driver.
+ * g_fm_rssi: low byte = RSSI[6:0], bit8 = lock (STC).  g_fm_mode = read chan. */
+extern volatile uint32_t g_fm_rssi;
+extern volatile uint32_t g_fm_mode;
+
 /* 8-bit write address (sequential mode) of the RDA5802E. */
 #define FM_I2C_ADDR   0x20u
 
@@ -210,10 +216,18 @@ void tuner_tune(uint32_t freq_khz)
 
 uint8_t tuner_rssi(void)
 {
-    return fm_broadcast_rssi();
+    uint8_t r = fm_broadcast_rssi();
+    g_fm_rssi = (g_fm_rssi & 0x100u) | r;            /* keep lock bit, set level */
+    return r;
 }
 
 bool tuner_getStatus(bool *tuned, uint16_t *channel)
 {
-    return fm_broadcast_status(tuned, channel);
+    bool t = false; uint16_t ch = 0;
+    bool ok = fm_broadcast_status(&t, &ch);
+    g_fm_rssi = (g_fm_rssi & 0xFFu) | (t ? 0x100u : 0u);  /* set/clear lock bit */
+    g_fm_mode = ch;
+    if(tuned)   *tuned   = t;
+    if(channel) *channel = ch;
+    return ok;
 }

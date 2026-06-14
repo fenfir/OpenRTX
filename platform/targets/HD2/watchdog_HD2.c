@@ -23,6 +23,11 @@
 /* Watchdog auto-heartbeat enable (diag op 'X' in hd2_diag.cpp): 1 = on. */
 volatile uint32_t g_wdt_auto = 1u;
 
+/* Vestigial radio boot-inhibit (diag op 'F').  The old hd2_rtx.c deferred radio
+ * bring-up behind this (an HW-I2C-wedge diagnostic); rtx.cpp brings the radio up
+ * at rtx_init, so it's now a no-op flag kept only so the 'F' op still links. */
+volatile int g_radio_enabled = 1;
+
 void watchdog_kick(void)
 {
     if(g_wdt_auto == 0u)
