@@ -454,13 +454,25 @@ rssi_t radio_getRssi()
      * rf_freeze: even a *read* is bit-bang bus traffic that can corrupt a
      * concurrent host transaction, so return the last cached value while
      * frozen (the S-meter just holds still).
+     *
+     * Peak-hold (instant rise, slow fall ~2 dB/call @ ~33 Hz): with NO carrier
+     * the chip refreshes reg-0x1B rssi_db only periodically and reads near-zero
+     * between updates (HW 2026-06-14), so a plain read flickers the S-meter to
+     * 0.  Peak-hold latches the periodic true value and ignores the stale dips,
+     * while a real signal drop still falls.  Done here (not the rtx task) so the
+     * de-jitter survives the OpMode_FM convergence (hd2_rtx.c -> rtx.cpp).
      */
-    static rssi_t lastRssi = -127;
+    static rssi_t held = -127;
 
     if(g_rf_freeze == 0u)
-        lastRssi = static_cast<rssi_t>(at1846s.readRSSI());
+    {
+        rssi_t raw = static_cast<rssi_t>(at1846s.readRSSI());
+        if(raw >= held)             held = raw;
+        else if((held - raw) > 2)   held = static_cast<rssi_t>(held - 2);
+        else                        held = raw;
+    }
 
-    return lastRssi;
+    return held;
 }
 
 enum opstatus radio_getStatus()
