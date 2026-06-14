@@ -975,6 +975,21 @@ extern "C" bool hd2_vox_detected(void)
 }
 
 /*
+ * RF carrier/squelch detect via the AT1846S's OWN comparator: reg 0x1C bit0 =
+ * sq_cmp, the chip's RSSI+noise decision with built-in hi/lo hysteresis
+ * (thresholds in 0x48/0x49, set from the squelch level by setSquelchLevel).
+ * This is MUCH steadier than thresholding our raw reg-0x1B RSSI, which reads
+ * ~40 dB low on ~10-20% of transfers and flutters the audio gate.  Mirrors the
+ * vendor's rx_squelch_monitor_tick (@0x03040a6c, reads 0x1C bit0).  Bit-bang
+ * read path (the AT1846S-class i2c reads are flaky in the live loop).
+ */
+extern "C" bool hd2_rx_carrier_detected(void)
+{
+    if(g_rf_freeze != 0u) return false;
+    return ((at1846s_read_reg(0x1C) & 0x0001u) != 0u);           // sq_cmp
+}
+
+/*
  * One-shot full AT1846S RX bring-up from firmware (loader op 'I', at_reinit):
  * chip init() (vendor sequence + GDx supplement; ~700 ms of calibration
  * delays -- BLOCKS the calling diag thread that long) + FM filter bank 0 +
