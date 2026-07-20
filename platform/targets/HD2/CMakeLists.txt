@@ -72,6 +72,7 @@ set(ORTX_HD2
     ${ORTX}/platform/drivers/display/ST7735S_HD2.c
     ${ORTX}/platform/drivers/keyboard/keyboard_HD2.c
     ${ORTX}/platform/drivers/backlight/backlight_HD2.c
+    ${ORTX}/platform/drivers/audio/codec_HD2.c
     ${ORTX}/platform/mcu/CSKY_V2/drivers/rtc_hd2.c
     ${ORTX}/platform/mcu/CSKY_V2/drivers/adc_hd2.c
     ${ORTX}/platform/drivers/GPS/gps_HD2.c

@@ -14,6 +14,8 @@
 #include "drivers/GPS/gps_HD2.h"
 #include "hwconfig.h"
 
+#include "drivers/audio/codec_HD2.h"
+
 extern void backlight_init(void);
 extern void backlight_terminate(void);
 
@@ -138,12 +140,59 @@ int8_t platform_getChSelector()
 {
     return 0;
 }
+/* Beep = PWM channel 1 square wave mixed through the (warmed) codec lineout to
+ * the speaker amp. Codec-free path would be silent -- the beep rides the codec,
+ * so warm it first. platform_init already leaves DIPLEX0 audio-unmuted (bit18=0)
+ * and does not need a read-modify-write here. */
 void platform_beepStart(uint16_t freq)
 {
-    (void)freq;
+    if (freq == 0u)
+        return;
+
+    hd2_audio_out_warm(); /* codec DAC -> lineout, once */
+
+    /* Un-mute the PWM-audio path into the codec (DIPLEX0 bit18 clear). This is
+     * the vendor's beep on/off gate -- clearing PWM enable alone does NOT
+     * silence the tone. Full write off our known 0x60 DIPLEX0 baseline (upper
+     * DIPLEX bits are write-only, so avoid a read-modify-write). */
+    SOCSYS_IO_DIPLEX0 = 0x00000060u;
+
+    /* Speaker amp: PTB4 LOW (unmute), PTB10 LOW (route to speaker),
+     * PTB17 HIGH (gain -- the loudness enable). */
+    GPIOB_DDR |= (SPKR_AMP_BIT | SPKR_GAIN_BIT | AUDIO_ROUTE_BIT);
+    GPIOB_DR &= ~(SPKR_AMP_BIT | AUDIO_ROUTE_BIT);
+    GPIOB_DR |= SPKR_GAIN_BIT;
+
+    /* PWM ch1 tone, 50% duty (same channel-start order as the backlight ch0). */
+    volatile uint32_t *p = PWM_CH1_BASE;
+    p[0] &= ~1u;
+    p[0] &= ~4u;
+    p[0] &= ~8u;
+    p[0] &= ~0x30u;
+    p[0] |= 0x20u;
+    p[0] |= 0x100u;
+    p[0] |= 0x200u;
+    p[1] = 5;
+    p[2] = PWM_TIMER_HZ / freq;
+    p[3] = p[2] / 2u;
+    p[0] |= 4u;
+    p[0] |= 1u;
 }
+
 void platform_beepStop()
 {
+    volatile uint32_t *p = PWM_CH1_BASE;
+    p[0] &= ~1u;
+    p[0] |= 2u;
+
+    /* Mute the PWM-audio path into the codec (DIPLEX0 bit18 set) -- the vendor's
+     * beep-off gate, and what actually silences the tone. Full write off the
+     * 0x60 baseline. */
+    SOCSYS_IO_DIPLEX0 = 0x00000060u | DIPLEX0_AUDIO_MUTE;
+
+    /* Re-mute the amp (PTB4 HIGH, PTB17 LOW). */
+    GPIOB_DR |= SPKR_AMP_BIT;
+    GPIOB_DR &= ~SPKR_GAIN_BIT;
 }
 
 /* --- RTC ----------------------------------------------------------------- */

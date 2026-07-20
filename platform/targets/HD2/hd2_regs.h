@@ -162,4 +162,67 @@
 #define ADC_DATA_EF ADC_REG(0x38u) /* ch4 / ch5 */
 #define ADC_DATA_GH ADC_REG(0x3cu) /* ch6 / ch7 */
 
-#endif                             /* HD2_REGS_H */
+/* -------------------------------------------------------------------------
+ *  AUDIO OUTPUT -- on-SoC codec DAC + PCM bridge -> LINE2OUT -> speaker amp.
+ *  Radio-free playback path (no AT1846S / RF / protocol). CPU writes PCM to
+ *  the SAHB window; the codec DAC fetches it at 8 kHz.
+ * ------------------------------------------------------------------------- */
+/* SOCSYS audio-routing / codec-gate registers (base 0x11000000). */
+#define SOCSYS_SYS_SOFT_RSTN \
+    SOCSYS_REG(0x00u) /* bit4 codec-reset (active-low) */
+#define SOCSYS_DAC_CONTROL SOCSYS_REG(0x70u)
+#define SOCSYS_ADC_CONTROL SOCSYS_REG(0x74u)
+#define SOCSYS_VOICE_PATH SOCSYS_REG(0x80u) /* PCM-bridge / codec-DAC source */
+#define SOCSYS_PCM_MODE SOCSYS_REG(0x84u)   /* 3 = PCM bridge; write-only-ish */
+#define SOCSYS_LINEOUT_CTRL \
+    SOCSYS_REG(0x88u)   /* [0]line2out_en [1]line1out_en [31]standby(RO) */
+#define SOCSYS_PCM_HANDSHAKE \
+    SOCSYS_LINEOUT_CTRL /* same reg, polled during warm-up */
+#define SOCSYS_CODEC_I2C_MUX SOCSYS_REG(0x8cu) /* [7] 0=MC (modem ctrl) iface */
+#define SOCSYS_WORK_MODE SOCSYS_REG(0x100u)    /* FM-analog audio gate = 0x6e */
+#define SOCSYS_AF_GATE \
+    SOCSYS_REG(0x39cu) /* SYS_INTERP_MASK; audio value 0x1007f */
+#define SOCSYS_INT_STATUS SOCSYS_REG(0x3b0u) /* PCM frame handshake latch */
+#define SOCSYS_MODEM_RXDP0 \
+    SOCSYS_REG(0x400u) /* opaque audio-gate warm value 0xc4 */
+#define SOCSYS_MODEM_RXDP1 \
+    SOCSYS_REG(0x408u) /* opaque audio-gate warm value 0x40 */
+
+#define SOFT_RSTN_PCM_BITS \
+    0x18u                       /* SYS_SOFT_RSTN bits 3/4: release PCM blocks */
+#define VOICE_PATH_PCM_EN 0x01u /* bit0: 1 = CPU PCM bridge, 0 = direct DAC */
+#define VOICE_PATH_CAP 0x10u    /* mic-capture side */
+#define VOICE_PATH_PLAY 0x20u   /* playback side */
+#define INT_STATUS_PCM_CAP_ACK 0x10u
+#define INT_STATUS_PCM_PLAY_ACK 0x20u
+
+/* SAHB shared-SRAM PCM mailbox: 80 x s16 @ 8 kHz, one frame / 10 ms. */
+#define SAHB_PCM_PLAY \
+    ((volatile uint16_t *)0x180000a0u) /* CPU writes, codec DACs */
+#define SAHB_PCM_CAP \
+    ((volatile uint16_t *)0x18000000u) /* mic ADC frames appear */
+#define PCM_FRAME_SAMPLES 80u
+
+/* PCM-bridge frame IRQ (PIC source ids; vec = 32 + src). */
+#define HD2_IRQ_PCM_PLAY 0x1bu /* modem "wants next playback frame" (~100 Hz) */
+#define HD2_IRQ_PCM_CAP 0x1cu
+
+/* GPIOB speaker-amp control (live-verified). */
+#define SPKR_AMP_BIT (1u << 4) /* PTB4:  amp mute, active-LOW  (LOW = on)   */
+#define AUDIO_ROUTE_BIT \
+    (1u << 10)                 /* PTB10: RX-audio route, LOW = to speaker   */
+#define SPKR_GAIN_BIT \
+    (1u << 17)                 /* PTB17: amp GAIN/ENABLE, active-HIGH        */
+
+#define DIPLEX0_AUDIO_MUTE 0x40000u /* IO_DIPLEX0 bit18: PWM-audio mute path */
+
+/* PWM channel 1 = the codec-mixed beep tone (block base + stride from above). */
+#define PWM_CH1_BASE \
+    ((volatile uint32_t *)(PWM_BASE + 1u * PWM_CH_STRIDE)) /* 0x140c0020 */
+
+/* Codec config byte-registers (MC interface, base 0x16000900). */
+#define CODEC_BASE 0x16000900u
+#define CODEC_BYTE(off) (*(volatile uint8_t *)(CODEC_BASE + (off)))
+#define CODEC_DACL_GAIN 0xb4u /* DAC-L gain written to CODEC_BYTE(0xdf) */
+
+#endif                        /* HD2_REGS_H */
