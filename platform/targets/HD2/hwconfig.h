@@ -28,6 +28,10 @@ extern "C" {
 #define CONFIG_BAT_LIION
 #define CONFIG_BAT_NCELLS 2
 
+/* GPS: module on UART2, polled; NMEA ring-buffer size */
+#define CONFIG_GPS
+#define CONFIG_NMEA_RBUF_SIZE 512
+
 #ifdef __cplusplus
 }
 #endif

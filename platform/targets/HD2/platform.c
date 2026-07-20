@@ -11,6 +11,7 @@
 #include "interfaces/platform.h"
 #include "peripherals/rtc.h"
 #include "drivers/adc_hd2.h"
+#include "drivers/GPS/gps_HD2.h"
 #include "hwconfig.h"
 
 extern void backlight_init(void);
@@ -154,4 +155,10 @@ datetime_t platform_getCurrentTime()
 void platform_setTime(datetime_t t)
 {
     rtc_setTime(t);
+}
+
+/* --- GPS (UART2, polled) ------------------------------------------------- */
+const struct gpsDevice *platform_initGps()
+{
+    return gps_HD2_init();
 }

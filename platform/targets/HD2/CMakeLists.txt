@@ -6,8 +6,9 @@
 # the vendor Miosix kernel consumed as a dependency.  This build tree lives in
 # the OpenRTX target dir; the miosix repo carries no OpenRTX/app code.
 #
-# Scope: display + backlight + keyboard + RTC + the UI.  No radio / DMR / audio
-# / M17 / GPS / NVM -- those are stubbed (hd2_stubs.c) so the core + UI link.
+# Scope: display + backlight + keyboard + RTC + battery + GPS + the UI.  No
+# radio / DMR / audio / M17 / NVM -- those are stubbed (hd2_stubs.c) so the
+# core + UI link.
 cmake_minimum_required(VERSION 3.21)
 
 # Kernel dependency.  Normally miosix-kernel is a sibling of OpenRTX under
@@ -72,7 +73,9 @@ set(ORTX_HD2
     ${ORTX}/platform/drivers/keyboard/keyboard_HD2.c
     ${ORTX}/platform/drivers/backlight/backlight_HD2.c
     ${ORTX}/platform/mcu/CSKY_V2/drivers/rtc_hd2.c
-    ${ORTX}/platform/mcu/CSKY_V2/drivers/adc_hd2.c)
+    ${ORTX}/platform/mcu/CSKY_V2/drivers/adc_hd2.c
+    ${ORTX}/platform/drivers/GPS/gps_HD2.c
+    ${ORTX}/platform/drivers/GPS/nmea_rbuf.c)
 
 # --- Vendored helper libs the core pulls in ---------------------------------
 set(ORTX_LIBS

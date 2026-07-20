@@ -73,6 +73,7 @@
 #define PTT_BIT (1u << 11)      /* PTB11, PTT button, active-LOW */
 #define PWR_KNOB_BIT (1u << 12) /* PTB12, volume/power knob: LOW = on */
 #define PWR_HOLD_BIT (1u << 13) /* PTB13, power self-latch: HIGH = hold */
+#define GPS_PWR_BIT (1u << 15)  /* PTB15, GPS module power: HIGH = on */
 
 /* -------------------------------------------------------------------------
  *  LCD -- HR_C7000 hardware i8080 controller (base 0x12000000, manual 5.3)
