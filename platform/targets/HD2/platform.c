@@ -41,7 +41,14 @@ void platform_init()
      * timer.)  These are whole-register vendor snapshot values; the upper
      * DIPLEX bits are write-only, so never read-modify-write them. */
     SOCSYS_IO_DIPLEX0 = 0x00000060u; /* PTA: vendor pad-mux baseline */
-    SOCSYS_IO_DIPLEX1 = 0x00000007u; /* PTA: SPI0 pads (vendor baseline) */
+    SOCSYS_IO_DIPLEX1 = 0x00000007u; /* SPI0 (W25Q) pad mux, EXACTLY as the proven
+                                      * platform_init writes it. The 0x38000000 top
+                                      * bits were added from a DIPLEX1 *readback* of
+                                      * 0x38000007 -- but like every DIPLEX reg the
+                                      * upper bits are write-only, so that readback
+                                      * is not what platform_init actually wrote. The
+                                      * proven build writes 0x07 and the codec DAC
+                                      * plays; writing 27-29 mis-muxes PTA pads. */
     SOCSYS_IO_DIPLEX2 = HD2_DIPLEX2_LCD_I80; /* PTC: LCD i8080 owns the bus */
 
     GPIOA_DDR = 0x003401e0u;
@@ -157,11 +164,12 @@ void platform_beepStart(uint16_t freq)
      * DIPLEX bits are write-only, so avoid a read-modify-write). */
     SOCSYS_IO_DIPLEX0 = 0x00000060u;
 
-    /* Speaker amp: PTB4 LOW (unmute), PTB10 LOW (route to speaker),
-     * PTB17 HIGH (gain -- the loudness enable). */
+    /* Speaker amp: PTB4 LOW (unmute), PTB10 LOW (route to speaker), PTB17 LOW
+     * (select the codec-DAC path -- PTB17 is a path select, NOT a gain: HIGH
+     * routes the AT1846S analog demod instead and the codec/PWM beep is silent).
+     * See docs openrtx-audio (PTB17). */
     GPIOB_DDR |= (SPKR_AMP_BIT | SPKR_GAIN_BIT | AUDIO_ROUTE_BIT);
-    GPIOB_DR &= ~(SPKR_AMP_BIT | AUDIO_ROUTE_BIT);
-    GPIOB_DR |= SPKR_GAIN_BIT;
+    GPIOB_DR &= ~(SPKR_AMP_BIT | AUDIO_ROUTE_BIT | SPKR_GAIN_BIT);
 
     /* PWM ch1 tone, 50% duty (same channel-start order as the backlight ch0). */
     volatile uint32_t *p = PWM_CH1_BASE;

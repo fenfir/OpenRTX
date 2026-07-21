@@ -170,6 +170,7 @@
 /* SOCSYS audio-routing / codec-gate registers (base 0x11000000). */
 #define SOCSYS_SYS_SOFT_RSTN \
     SOCSYS_REG(0x00u) /* bit4 codec-reset (active-low) */
+#define SOCSYS_REG2C       SOCSYS_REG(0x2cu) /* gated-clock enable (modem/codec) */
 #define SOCSYS_DAC_CONTROL SOCSYS_REG(0x70u)
 #define SOCSYS_ADC_CONTROL SOCSYS_REG(0x74u)
 #define SOCSYS_VOICE_PATH SOCSYS_REG(0x80u) /* PCM-bridge / codec-DAC source */
@@ -180,6 +181,27 @@
     SOCSYS_LINEOUT_CTRL /* same reg, polled during warm-up */
 #define SOCSYS_CODEC_I2C_MUX SOCSYS_REG(0x8cu) /* [7] 0=MC (modem ctrl) iface */
 #define SOCSYS_WORK_MODE SOCSYS_REG(0x100u)    /* FM-analog audio gate = 0x6e */
+#define SOCSYS_RF_MODE SOCSYS_REG(0x104u)      /* baseband RF-iface mode; 0x034c9060 */
+
+/* Baseband/modem datapath regs the codec DAC-consume stage rides on. These are
+ * RX-datapath *config* (no TX keying, no antenna) -- the codec DAC lives inside
+ * the modem block, so the SAHB->DAC consume stage only clocks when this datapath
+ * is brought up. Numbered by SoC offset; live-verified values (hd2_modem_fm_boot). */
+#define SOCSYS_RF_CONTROL SOCSYS_REG(0x110u)   /* 0x00041f1a */
+#define SOCSYS_RF_IF_REG  SOCSYS_REG(0x114u)   /* 0x01e80000 */
+#define SOCSYS_THRESHOLD  SOCSYS_REG(0x120u)   /* 0x0978786f; §8.2.2 gates the AF datapath */
+#define SOCSYS_SLOT_GUARD SOCSYS_REG(0x168u)   /* 0x14 */
+#define SOCSYS_RX_IF_FREQ SOCSYS_REG(0x1b0u)   /* 0x000bb800 = 768 kHz */
+#define SOCSYS_RX_AGC     SOCSYS_REG(0x1b4u)   /* 0x000036b0 */
+
+/* MCU-bus DAC (0x140f0000) -- AF-receive VCM/VINM bias (manual §8.2.3.1). */
+#define DAC_MCU_REG(off)   (*(volatile uint32_t *)(0x140f0000u + (off)))
+#define DAC_MCU_PD_CTRL    DAC_MCU_REG(0x00u)  /* [2:0] C/B/A: 1=power-down 0=power-up */
+#define DAC_MCU_PD_MODE_EN DAC_MCU_REG(0x04u)
+#define DAC_MCU_DATA_A     DAC_MCU_REG(0x08u)
+#define DAC_MCU_DATA_B     DAC_MCU_REG(0x0cu)
+#define DAC_MCU_DATA_C     DAC_MCU_REG(0x10u)  /* AF-receive bias (0x6e2) */
+
 #define SOCSYS_AF_GATE \
     SOCSYS_REG(0x39cu) /* SYS_INTERP_MASK; audio value 0x1007f */
 #define SOCSYS_INT_STATUS SOCSYS_REG(0x3b0u) /* PCM frame handshake latch */
