@@ -86,9 +86,10 @@ void audio_connect(const enum AudioSource source, const enum AudioSink sink)
     switch(PATH(source, sink))
     {
         case PATH(SOURCE_MCU, SINK_SPK):
-            /* MCU playback (beep / voice prompt / PCM): the codec DAC ->
-             * lineout must be warm, then route + unmute the speaker amp. */
+            /* MCU playback (beep / voice prompt / PCM): warm the codec DAC (once),
+             * (re-)enable the lineout, then route + unmute the speaker amp. */
             hd2_audio_out_warm();
+            hd2_audio_out_lineout(1);
             rx_route_on();
             spkr_amp_unmute();
             break;
@@ -104,7 +105,10 @@ void audio_disconnect(const enum AudioSource source, const enum AudioSink sink)
     switch(PATH(source, sink))
     {
         case PATH(SOURCE_MCU, SINK_SPK):
+            /* Silent state: mute the amp, then gate the warm DAC's lineout off so
+             * no faint idle hiss leaks through between prompts. */
             spkr_amp_mute();
+            hd2_audio_out_lineout(0);
             break;
 
         default:

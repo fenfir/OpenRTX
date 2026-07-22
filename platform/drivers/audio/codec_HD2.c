@@ -131,3 +131,25 @@ void hd2_audio_out_warm(void)
 
     warmed = true;
 }
+
+/* Gate the codec DAC output stage. The one-time warm() leaves the DAC powered and
+ * the lineout enabled; between prompts that warm DAC leaks a faint idle hiss past
+ * the muted amp. When idle (the "silent state") disable the lineout AND power down
+ * the DAC (DAC_CONTROL bit5 = pwda); re-enable both before each prompt -- the heavy
+ * warm() clock/reset/init stays intact. Callers mute the amp around this so the
+ * power transition isn't audible. */
+void hd2_audio_out_lineout(int on)
+{
+    if(on)
+    {
+        CB(0xdf) = CODEC_DACL_GAIN;        /* restore codec-chip DAC gain  */
+        SOCSYS_DAC_CONTROL  = 0x8000001fu; /* bit5 clear -> SOCSYS DAC on   */
+        SOCSYS_LINEOUT_CTRL = 0x00000003u; /* lineout enable               */
+    }
+    else
+    {
+        SOCSYS_LINEOUT_CTRL = 0x00000000u; /* lineout disable              */
+        SOCSYS_DAC_CONTROL  = 0x8000003fu; /* bit5 set   -> SOCSYS DAC down  */
+        CB(0xdf) = 0x00u;                  /* mute codec-chip DAC gain     */
+    }
+}

@@ -25,6 +25,14 @@ project(OpenRtxHd2Min C CXX ASM)
 set(MIOSIX_BOARD hrc7000_hd2)
 set(MIOSIX_USER_CONFIG_PATH ${MIOSIX_KPATH}/config)
 
+# Low-RAM-origin linker (out-of-tree, absolute path -> used verbatim by the
+# miosix arch cmake). The stock board unikernel.ld reserves ~76 KiB of RAM for
+# the AMBE+2 DMR-voice codec; this radio-free min never uses it, so reclaim that
+# window (112 KiB -> 188 KiB app RAM) for the codec2 voice-prompt state. FORCE
+# so it overrides any previously-cached board default.
+set(MIOSIX_LINKER_SCRIPT ${CMAKE_SOURCE_DIR}/hd2_min_lowram.ld
+    CACHE STRING "HD2 min-bringup low-RAM-origin linker script" FORCE)
+
 add_subdirectory(${MIOSIX_KPATH} miosix EXCLUDE_FROM_ALL)
 
 # OpenRTX repo root: this dir is <root>/platform/targets/HD2, so up 3.
@@ -53,10 +61,10 @@ set(ORTX_CORE
     ${ORTX}/openrtx/src/core/memory_profiling.cpp
     ${ORTX}/openrtx/src/core/audio_path.cpp
     ${ORTX}/openrtx/src/core/audio_stream.c
-    ${ORTX}/openrtx/src/core/voicePromptUtils.c)
-# Deliberately omitted (stubbed in hd2_stubs.c): voicePrompts.c + audio_codec.c
-# + dsp.cpp (codec2's large static state trips the boot-hang the HD2 build
-# avoids), and rtx.cpp + OpMode_* (radio stack).
+    ${ORTX}/openrtx/src/core/voicePromptUtils.c
+    ${ORTX}/openrtx/src/core/voicePrompts.c)
+# audio_codec.c is replaced by the HD2 pre-decode variant (audio_codec_HD2.c);
+# dsp.cpp (encode-side) + rtx.cpp + OpMode_* (radio stack) stay omitted.
 
 # --- Default UI -------------------------------------------------------------
 set(ORTX_UI
@@ -75,6 +83,8 @@ set(ORTX_HD2
     ${ORTX}/platform/drivers/audio/codec_HD2.c
     ${ORTX}/platform/drivers/audio/audio_HD2.c
     ${ORTX}/platform/drivers/audio/outputStream_HD2.cpp
+    ${CMAKE_SOURCE_DIR}/audio_codec_HD2.c
+    ${CMAKE_SOURCE_DIR}/vpdata_HD2.S
     ${ORTX}/platform/mcu/CSKY_V2/drivers/rtc_hd2.c
     ${ORTX}/platform/mcu/CSKY_V2/drivers/adc_hd2.c
     ${ORTX}/platform/drivers/GPS/gps_HD2.c
@@ -84,6 +94,33 @@ set(ORTX_HD2
 set(ORTX_LIBS
     ${ORTX}/lib/minmea/minmea.c
     ${ORTX}/lib/QRCode/qrcode.c)
+
+# --- Codec2-mod (M17 3200, fixed-point) -- voice-prompt decode + benchmark ---
+# The M17-Project Codec2-mod fork (under hd2-clean/vendor), a minimal malloc-free
+# 3200-only refactor with a STATIC fixed-size codec2_t (~29 KB .bss).  C2_FIXED
+# selects the on-device fixed-point encode/decode path.  Path is ${ORTX}-relative
+# so it resolves under both the host tree and the /work docker mount.
+set(C2M ${ORTX}/../hd2-clean/vendor/Codec2-mod)
+add_library(codec2_hd2 STATIC
+    ${C2M}/src/analysis.c   ${C2M}/src/codec2_mod.c ${C2M}/src/delta_lsp_cb.c
+    ${C2M}/src/interp.c     ${C2M}/src/kiss_fft.c   ${C2M}/src/kiss_fftr.c
+    ${C2M}/src/lpc.c        ${C2M}/src/nlp.c        ${C2M}/src/quantise.c
+    ${C2M}/src/synthesis.c  ${C2M}/src/util.c       ${C2M}/src/fft_fixed.c)
+target_include_directories(codec2_hd2 PRIVATE ${C2M}/inc)
+target_compile_options(codec2_hd2 PRIVATE
+    -w -ffunction-sections -fdata-sections
+    -fsingle-precision-constant -fno-math-errno
+    -Os) # size-opt: shrinks the decode working set to fit the 4 KB I-cache
+         # (~3.9 KB), halving aks2mag2 vs -O2. Requires the codec2 linker pin.
+    # NOTE: do NOT add -mdsp here. It replaces the decode's __muldi3 64-bit
+    # multiplies with C-SKY DSP instructions, but the HR_C7000 CK803S does NOT
+    # implement the DSP extension -- verified 2026-07-22: encode (no DSP insns)
+    # ran fine while decode (DSP insns) faulted -> bootloop. -mcpu=ck803s is a
+    # no-op in this gcc (identical codegen to ck803). Decode stays ~31.7 ms.
+# NOTE: AKS_FFT_NOPRUNE is deliberately NOT defined -- leaving it out selects the
+# bit-identical input-pruned aks FFT (only 11 of 256 inputs nonzero), the faster
+# path. C2_PROF enables the per-stage prof_mark() decode profiler.
+target_compile_definitions(codec2_hd2 PRIVATE C2_FIXED)
 
 add_executable(openrtx_hd2
     ${CMAKE_SOURCE_DIR}/main.cpp
@@ -99,7 +136,16 @@ target_include_directories(openrtx_hd2 PRIVATE
     ${ORTX}/platform/mcu/CSKY_V2
     ${ORTX}/lib/minmea/include
     ${ORTX}/lib/QRCode/include
-    ${ORTX}/lib/qdec/include)
+    ${ORTX}/lib/qdec/include
+    ${C2M}/inc)
+
+target_link_libraries(openrtx_hd2 PRIVATE codec2_hd2)
+
+# The voice-prompt blob embed (vpdata_HD2.S) resolves `.incbin "voiceprompts.vpc"`
+# via an assembler include path pointing at the OpenRTX repo root (${ORTX}), where
+# voiceprompts.vpc lives.
+set_source_files_properties(${CMAKE_SOURCE_DIR}/vpdata_HD2.S PROPERTIES
+    COMPILE_OPTIONS "-Wa,-I${ORTX}")
 
 target_compile_definitions(openrtx_hd2 PRIVATE
     PLATFORM_HD2 _MIOSIX FONT_UBUNTU_REGULAR timegm=mktime

@@ -7,12 +7,12 @@
  * kernel init, so we hand straight off to OpenRTX's standard threaded flow.
  */
 
-extern "C" void openrtx_init(void);
+extern "C" void  openrtx_init(void);
 extern "C" void *openrtx_run(void *arg);
 
 int main()
 {
-    openrtx_init();       // platform/state/gfx/kbd/ui + codeplug + splash
-    openrtx_run(nullptr); // create_threads() (ui + rtx) then main_thread loop
+    openrtx_init();       // platform/state/gfx/kbd/ui + codeplug + splash + vp_init
+    openrtx_run(nullptr); // create_threads() (ui + rtx, drives vp_tick) then loop
     return 0;
 }

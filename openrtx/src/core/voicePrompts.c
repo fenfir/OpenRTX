@@ -21,6 +21,9 @@
 #include "core/beeps.h"
 #include <errno.h>
 
+/* HD2 pre-decode codec: hard-abort an in-progress prompt (min-specific). */
+extern void codec_abort(void);
+
 static const uint32_t VOICE_PROMPTS_DATA_MAGIC = 0x5056;   //'VP'
 static const uint32_t VOICE_PROMPTS_DATA_VERSION = 0x1000; // v1000 OpenRTX
 
@@ -254,8 +257,10 @@ static inline void enableSpkOutput()
  */
 static inline void disableSpkOutput()
 {
-    // Avoid chomping away a still in-progress beep or voice prompt.
-    if ((currentBeepDuration != 0) || (voicePromptActive == true))
+    // Avoid chomping away a still in-progress beep or voice prompt. codec_running()
+    // covers the HD2 pre-decode worker: it holds the path across decode+playback
+    // even after voicePromptActive is cleared.
+    if ((currentBeepDuration != 0) || (voicePromptActive == true) || codec_running())
         return;
 
     audioPath_release(vpAudioPath);
@@ -363,6 +368,7 @@ void vp_terminate()
 void vp_stop()
 {
     voicePromptActive = false;
+    codec_abort(); // hard-stop the HD2 pre-decode worker if mid-prompt
     codec_stop(vpAudioPath);
     disableSpkOutput();
 
@@ -565,13 +571,18 @@ void vp_tick()
         vpCurrentSequence.c2DataIndex = 0;
     }
 
-    // see if we've finished.
+    // All frames of the sequence have been pushed. On HD2, codec_stop() kicks the
+    // pre-decode worker (decode whole prompt -> play); codec_running() stays true
+    // across it, so keep the prompt "active" (holding the audio path) until the
+    // worker finishes, THEN finalize.
     if (vpCurrentSequence.pos == vpCurrentSequence.length) {
+        codec_stop(vpAudioPath);
+        if (codec_running())
+            return;
         voicePromptActive = false;
         vpCurrentSequence.pos = 0;
         vpCurrentSequence.c2DataIndex = 0;
         vpCurrentSequence.c2DataLength = 0;
-        codec_stop(vpAudioPath);
         disableSpkOutput();
     }
 }

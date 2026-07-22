@@ -21,52 +21,8 @@ void timer_init(void)
 {
 }
 
-/* ---- Voice prompts (no audio path in the minimal bring-up) ---------------- */
-void vp_init()
-{
-}
-void vp_stop()
-{
-}
-void vp_tick()
-{
-}
-void vp_play()
-{
-}
-void vp_flush()
-{
-}
-bool vp_isPlaying()
-{
-    return false;
-}
-void vp_beep(uint16_t freq, uint16_t duration)
-{
-    (void)freq;
-    (void)duration;
-}
-void vp_beepSeries(const uint16_t *beepSeries)
-{
-    (void)beepSeries;
-}
-void vp_queueInteger(const int value)
-{
-    (void)value;
-}
-void vp_queuePrompt(const uint16_t prompt)
-{
-    (void)prompt;
-}
-void vp_queueString(const char *string, enum vpFlags flags)
-{
-    (void)string;
-    (void)flags;
-}
-void vp_queueStringTableEntry(const char *const *e)
-{
-    (void)e;
-}
+/* Voice prompts are now real (core/voicePrompts.c + audio_codec_HD2.c); their
+ * stubs were removed. */
 
 /* ---- Codeplug NVM (no W25Q reader): open succeeds with an empty codeplug,
  *      per-record reads return -1 so the core uses its built-in defaults. --- */
