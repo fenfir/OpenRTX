@@ -108,6 +108,11 @@ static inline void rx_route_on(void)
     gpio_clearPin(GPIOB, AUDIO_ROUTE_PIN);
 } /* PTB10 LOW = routed */
 
+static inline void rx_route_off(void)
+{
+    gpio_setPin(GPIOB, AUDIO_ROUTE_PIN);
+} /* PTB10 HIGH = un-routed (close the route gate) */
+
 void audio_init()
 {
     /* Drive the amp + gain + route lines as outputs; start with the speaker
@@ -116,6 +121,7 @@ void audio_init()
     gpio_setMode(GPIOB, SPKR_GAIN_PIN, OUTPUT);
     gpio_setMode(GPIOB, AUDIO_ROUTE_PIN, OUTPUT);
     spkr_amp_mute();
+    rx_route_off(); /* start with the RX-audio route closed (PTB10 HIGH) */
 }
 
 void audio_terminate()
@@ -166,14 +172,19 @@ void audio_disconnect(const enum AudioSource source, const enum AudioSink sink)
 
     switch (PATH(source, sink)) {
         case PATH(SOURCE_RTX, SINK_SPK):
-            /* Squelch gate: re-mute the amp (pure GPIO).  Leave the AT1846S AF
-             * config + chip-side unmute in place so the next open is just a
-             * GPIO toggle. */
+            /* Squelch gate: mute the amp AND close the RX-audio route (PTB10).
+             * The route is opened on connect but was never closed, so it latched
+             * open on the first RX and left the AT1846S demod noise floor a
+             * permanent path to the amp (a faint squeal that appeared on the
+             * first audio event and persisted).  The AT1846S AF config +
+             * chip-side unmute stay in place so re-open is still a GPIO toggle. */
             spkr_amp_mute();
+            rx_route_off();
             break;
 
         case PATH(SOURCE_MCU, SINK_SPK):
             spkr_amp_mute();
+            rx_route_off();        /* close the RX-audio route (PTB10) */
             g_rx_af_mute_req = 0u; /* rtx thread restores the RX AF output */
             break;
 
