@@ -85,6 +85,12 @@ public:
      *
      * @param freq: VCO frequency.
      */
+#if defined(PLATFORM_HD2)
+    /* The HD2's AT1846SD needs a vendor-specific tune sequence (band-select
+     * register 0x05 + a reg-0x30 0x4006/0x4046 double-write); it is defined
+     * out-of-line in AT1846S_HD2.cpp. */
+    void setFrequency(const freq_t freq);
+#else
     void setFrequency(const freq_t freq)
     {
         // AT1846S datasheet specifies a frequency step of 1/16th of kHz per bit.
@@ -101,6 +107,7 @@ public:
 
         reloadConfig();
     }
+#endif
 
     /**
      * Set the transmission and reception bandwidth.
