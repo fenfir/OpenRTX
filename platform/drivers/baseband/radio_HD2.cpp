@@ -612,6 +612,27 @@ extern "C" void hd2_audio_out_warm(void)
     warmed = true;
 }
 
+/* Gate the codec-DAC lineout for MCU (beep / voice-prompt / PCM) playback.
+ * hd2_audio_out_warm() latches, so once it has run the DAC + LINEOUT stay
+ * enabled forever; a warm-but-idle DAC then leaks a faint analog noise floor
+ * into the speaker amp (post the codec digital volume, so the volume knob can't
+ * touch it).  The audio-path HAL calls this on every SOURCE_MCU->SINK_SPK
+ * open/close so the DAC + lineout are live only while a clip is actually
+ * playing -- no idle hiss between prompts.  Does NOT touch the AT1846S analog
+ * FM-RX path (that reaches the amp on PTB17=HIGH, not through the codec DAC). */
+extern "C" void hd2_audio_out_lineout(int on)
+{
+    if (on) {
+        CB(0xdf) = CODEC_DACL_GAIN;         /* restore codec-chip DAC gain     */
+        SOCSYS->DAC_CONTROL  = 0x8000001fu; /* bit5 clear -> SOCSYS DAC on      */
+        SOCSYS->LINEOUT_CTRL = 0x00000003u; /* both lineouts (speaker=LINE2OUT) */
+    } else {
+        SOCSYS->LINEOUT_CTRL = 0x00000000u; /* lineout disable                  */
+        SOCSYS->DAC_CONTROL  = 0x8000003fu; /* bit5 set   -> SOCSYS DAC standby */
+        CB(0xdf) = 0x00u;                   /* mute codec-chip DAC gain         */
+    }
+}
+
 /*
  * AT1846S RX-audio (AF-DSP) config -- the chip-side half of the proven listen
  * sequence, WITHOUT the codec/socsys gate and WITHOUT any board GPIO.  Call

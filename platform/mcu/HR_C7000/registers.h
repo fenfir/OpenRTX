@@ -149,6 +149,11 @@ static_assert(offsetof(SOCSYS_TypeDef, FM_PTT) == 0x560, "SOCSYS FM_PTT");
 #define HD2_IRQ_PCM_PLAY 0x1bu /* codec requests a playback frame (vendor isr_pcm_rd) */
 #define HD2_IRQ_PCM_CAP  0x1cu /* mic capture frame ready       (vendor isr_pcm_wr) */
 
+/* IO_DIPLEX0 bit18: mute gate on the codec/PWM audio-out leg to the speaker.
+ * SET = muted; CLEAR = audible.  audio_connect(SOURCE_MCU,SINK_SPK) clears it
+ * so the PWM beep tone (PWM ch1, platform.c) reaches the amp. */
+#define DIPLEX0_AUDIO_MUTE 0x40000u
+
 /* HD2 board PTC pad-mux values (HD2_DIPLEX2_*) live in targets/HD2/pinmap.h. */
 
 /* -------------------------------------------------------------------------
@@ -358,7 +363,7 @@ typedef struct {
 #define GPIOB ((GPIO_TypeDef *)0x14100000u)
 #define GPIOC ((GPIO_TypeDef *)0x14110000u)
 #define LCD_HW ((LCD_TypeDef *)0x12000000u)
-#define PWM_CH0 ((PWM_Channel_TypeDef *)0x140c0000u)
+#define PWM_CH0 ((PWM_Channel_TypeDef *)0x140c0000u) /* LCD backlight */
 #define I2C1 ((I2C_TypeDef *)0x14070000u) /* radio bus: AT1846S transceiver */
 #define I2C2 ((I2C_TypeDef *)0x14080000u) /* internal bus: RTC */
 #define ADC_HW ((ADC_TypeDef *)0x140d0000u)
