@@ -12,6 +12,7 @@
 #include "core/voicePrompts.h"
 #include "core/audio_codec.h"
 #include "core/audio_path.h"
+#include "core/audio_stream.h"
 #include <strings.h> // For strncasecmp
 #include <ctype.h>
 #include "core/state.h"
@@ -82,7 +83,38 @@ static bool voicePromptActive = false;
 static beepData_t beepSeriesBuffer[BEEP_SEQ_BUF_SIZE];
 static uint16_t currentBeepDuration = 0;
 static uint8_t beepSeriesIndex = 0;
+#ifndef PLATFORM_HD2
 static bool delayBeepUntilTick = false;
+#endif
+
+#ifdef PLATFORM_HD2
+/* HD2 keytones/beeps are a PCM square-wave tone pushed through the codec-DAC
+ * output stream.  On this board the codec DAC only produces output while a PCM
+ * stream is clocking it -- FM RX is analog-direct (never clocks the codec DAC)
+ * and a bare hardware PWM tone is silent -- so platform_beepStart/Stop are
+ * no-ops and the tone is generated here.  Mirrors voicePrompts_adpcm.c. */
+#define VP_BEEP_HALF    160u /* samples per stream half (20 ms @ 8 kHz) */
+#define VP_BEEP_SAMPLES (VP_BEEP_HALF * 2u)
+static stream_sample_t hd2BeepBuf[VP_BEEP_SAMPLES];
+static streamId hd2BeepStream = -1;
+static uint16_t hd2BeepFreq = 0;
+static uint32_t hd2BeepPhase = 0;
+
+/* Fill one half with a phase-continuous square wave at hd2BeepFreq; 0 -> silence. */
+static void hd2BeepFill(stream_sample_t *dst)
+{
+    if (hd2BeepFreq == 0) {
+        memset(dst, 0, VP_BEEP_HALF * sizeof(stream_sample_t));
+        return;
+    }
+    for (unsigned i = 0; i < VP_BEEP_HALF; i++) {
+        hd2BeepPhase += hd2BeepFreq;
+        if (hd2BeepPhase >= 8000u)
+            hd2BeepPhase -= 8000u;
+        dst[i] = (hd2BeepPhase < 4000u) ? 8000 : -8000;
+    }
+}
+#endif
 
 static pathId vpAudioPath;
 static long long vpStartTime;
@@ -261,6 +293,37 @@ static inline void disableSpkOutput()
     audioPath_release(vpAudioPath);
 }
 
+#ifdef PLATFORM_HD2
+/* Open the MCU->SPK path + the beep tone stream (reused across a beep series;
+ * a no-op once the stream is already running). */
+static bool hd2BeepOpen(void)
+{
+    enableSpkOutput();
+    if (audioPath_getStatus(vpAudioPath) != PATH_OPEN)
+        return false;
+    if (hd2BeepStream < 0) {
+        /* Prefill both halves so the tone sounds from frame 0 (a silent prime
+         * would clip a short keytone to a click before the tone cycles in). */
+        hd2BeepFill(&hd2BeepBuf[0]);
+        hd2BeepFill(&hd2BeepBuf[VP_BEEP_HALF]);
+        hd2BeepStream = audioStream_start(vpAudioPath, hd2BeepBuf,
+                                          VP_BEEP_SAMPLES, 8000,
+                                          STREAM_OUTPUT | BUF_CIRC_DOUBLE);
+        if (hd2BeepStream < 0)
+            return false;
+    }
+    return true;
+}
+
+static void hd2BeepClose(void)
+{
+    if (hd2BeepStream >= 0) {
+        audioStream_stop(hd2BeepStream);
+        hd2BeepStream = -1;
+    }
+}
+#endif
+
 /**
  * \internal
  * Stop an ongoing beep, if present, and clear all the beep management
@@ -268,8 +331,13 @@ static inline void disableSpkOutput()
  */
 static void beep_flush()
 {
+#ifdef PLATFORM_HD2
+    hd2BeepClose();
+    hd2BeepFreq = 0;
+#else
     if (currentBeepDuration > 0)
         platform_beepStop();
+#endif
 
     memset(beepSeriesBuffer, 0, sizeof(beepSeriesBuffer));
     currentBeepDuration = 0;
@@ -283,6 +351,44 @@ static void beep_flush()
  */
 static bool beep_tick()
 {
+#ifdef PLATFORM_HD2
+    /* PCM-tone beep: pace one 20 ms square-wave half per output-stream
+     * syncpoint (currentBeepDuration counts halves), advancing the series. */
+    if (currentBeepDuration == 0)
+        return false;
+
+    if ((hd2BeepStream < 0)
+        || (audioPath_getStatus(vpAudioPath) != PATH_OPEN)) {
+        beep_flush();
+        return true;
+    }
+    if (outputStream_sync(hd2BeepStream, false) == false) {
+        beep_flush();
+        return true;
+    }
+    stream_sample_t *idle = outputStream_getIdleBuffer(hd2BeepStream);
+    if (idle == NULL) {
+        beep_flush();
+        return true;
+    }
+    hd2BeepFill(idle);
+
+    currentBeepDuration--;
+    if (currentBeepDuration == 0) {
+        if ((beepSeriesBuffer[beepSeriesIndex + 1].freq != 0)
+            && (beepSeriesBuffer[beepSeriesIndex + 1].duration != 0)) {
+            beepSeriesIndex++;
+            currentBeepDuration = beepSeriesBuffer[beepSeriesIndex].duration;
+            hd2BeepFreq = beepSeriesBuffer[beepSeriesIndex].freq;
+        } else {
+            /* Drain the final half to the DAC before stopping, else the tail
+             * clips and a short beep sounds like a click. */
+            outputStream_sync(hd2BeepStream, false);
+            beep_flush();
+        }
+    }
+    return true;
+#else
     if (currentBeepDuration > 0) {
         if (delayBeepUntilTick) {
             platform_beepStart(beepSeriesBuffer[beepSeriesIndex].freq);
@@ -310,6 +416,7 @@ static bool beep_tick()
     }
 
     return false;
+#endif
 }
 
 void vp_init()
@@ -605,8 +712,13 @@ void vp_beep(uint16_t freq, uint16_t duration)
     beepSeriesBuffer[1].duration = 0;
     currentBeepDuration = duration;
     beepSeriesIndex = 0;
+#ifdef PLATFORM_HD2
+    hd2BeepFreq = freq;
+    hd2BeepOpen(); /* PCM tone stream; beep_tick fills it */
+#else
     platform_beepStart(freq);
     enableSpkOutput();
+#endif
 }
 
 void vp_beepSeries(const uint16_t *beepSeries)
@@ -630,5 +742,10 @@ void vp_beepSeries(const uint16_t *beepSeries)
 
     currentBeepDuration = beepSeriesBuffer[0].duration;
     beepSeriesIndex = 0;
+#ifdef PLATFORM_HD2
+    hd2BeepFreq = beepSeriesBuffer[0].freq;
+    hd2BeepOpen(); /* PCM tone stream; beep_tick fills it */
+#else
     delayBeepUntilTick = true;
+#endif
 }

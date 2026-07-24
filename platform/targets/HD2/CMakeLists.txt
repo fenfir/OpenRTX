@@ -25,6 +25,13 @@ project(OpenRtxHd2Min C CXX ASM)
 set(MIOSIX_BOARD hrc7000_hd2)
 set(MIOSIX_USER_CONFIG_PATH ${MIOSIX_KPATH}/config)
 
+# Custom application linker script: pins the codec2 decode .text into the CK803S
+# I-cache (see hd2_codec2.ld).  The kernel uses MIOSIX_LINKER_SCRIPT directly
+# when it is an absolute path (miosix/arch/CMakeLists.txt), so force it here
+# before the kernel subdir sets its own default (unikernel.ld).
+set(MIOSIX_LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/hd2_codec2.ld"
+    CACHE STRING "Linker script" FORCE)
+
 add_subdirectory(${MIOSIX_KPATH} miosix EXCLUDE_FROM_ALL)
 
 # OpenRTX repo root: this dir is <root>/platform/targets/HD2, so up 3.
@@ -54,11 +61,11 @@ set(ORTX_CORE
     ${ORTX}/openrtx/src/core/audio_path.cpp
     ${ORTX}/openrtx/src/core/audio_stream.c
     ${ORTX}/openrtx/src/core/voicePromptUtils.c)
-# Voice prompts use the IMA-ADPCM player (ORTX_VP below), NOT the stock
-# codec2-based core/voicePrompts.c: codec2's large static state trips the HD2
-# boot-hang and its decode isn't realtime on this soft-float core.  So
-# audio_codec.c + dsp.cpp stay omitted.  The analog-FM radio stack (rtx.cpp +
-# OpMode_FM.cpp + the HD2 baseband/audio drivers) is built -- see ORTX_RADIO.
+# Voice prompts use the stock codec2 player (ORTX_VP below) decoded by the
+# custom fixed-point Codec2-mod fork (libcodec2_hd2.a), whose decode .text is
+# pinned into the CK803S I-cache by hd2_codec2.ld.  So audio_codec.c + dsp.cpp
+# (ORTX_CODEC) are built here.  The analog-FM radio stack (rtx.cpp + OpMode_FM +
+# the HD2 baseband/audio drivers) is also built -- see ORTX_RADIO.
 
 # --- Default UI -------------------------------------------------------------
 set(ORTX_UI
@@ -110,23 +117,62 @@ set(ORTX_LIBS
     ${ORTX}/lib/minmea/minmea.c
     ${ORTX}/lib/QRCode/qrcode.c)
 
-# --- Voice prompts (IMA-ADPCM) ----------------------------------------------
-# The generic ADPCM player (core/voicePrompts_adpcm.c + lib/codec) and the core
-# clip container embed (voicePromptData_adpcm.S -> voiceprompts.vpa), selected
-# in place of the codec2-based core/voicePrompts.c + voicePromptData.S.  The .S
-# does `.incbin "../voiceprompts.vpa"`; GAS resolves it via an assembler -I of
-# ${ORTX}/openrtx -> the repo-root voiceprompts.vpa (same as the codec2 embed).
+# --- Custom fixed-point codec2 (M17 Codec2-mod fork) as a pinned static lib --
+# Built as its own archive (libcodec2_hd2.a) so hd2_codec2.ld can pin its .text
+# into the CK803S 4 KB I-cache.  -DC2_FIXED selects the fixed-point decode path
+# and CHANGES the codec2_t struct layout, so it must be uniform across the whole
+# archive (incl. codec2_compat.c, which sizeof()s + inits the struct).  Built -Os
+# with a monolithic .text; hd2_codec2.ld pins that .text to the CK803S 4 KB
+# I-cache boundary.  Pinned at commit 2e50cc6 of the fork.
+set(CODEC2_MOD ${ORTX}/../Codec2-mod)
+add_library(codec2_hd2 STATIC
+    ${CODEC2_MOD}/src/analysis.c
+    ${CODEC2_MOD}/src/codec2_mod.c
+    ${CODEC2_MOD}/src/delta_lsp_cb.c
+    ${CODEC2_MOD}/src/fft_fixed.c
+    ${CODEC2_MOD}/src/interp.c
+    ${CODEC2_MOD}/src/kiss_fft.c
+    ${CODEC2_MOD}/src/kiss_fftr.c
+    ${CODEC2_MOD}/src/lpc.c
+    ${CODEC2_MOD}/src/nlp.c
+    ${CODEC2_MOD}/src/quantise.c
+    ${CODEC2_MOD}/src/synthesis.c
+    ${CODEC2_MOD}/src/util.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/codec2_compat.c)
+target_include_directories(codec2_hd2 PRIVATE
+    ${CODEC2_MOD}/inc
+    ${CMAKE_CURRENT_SOURCE_DIR})           # codec2.h shim
+target_compile_definitions(codec2_hd2 PRIVATE C2_FIXED)
+# -Os with a MONOLITHIC .text (NO -ffunction-sections).  The decode hot loops are
+# I-cache-set-collision-sensitive and the fork's layout is hand-tuned (Codec2-mod
+# 2e50cc6) to keep aks_to_mag2 off a colliding set with lpc.o byte-identical at
+# its natural address.  -O2 or -ffunction-sections resize/reorder the functions
+# and reshuffle the set mapping -- measured ~6 ms/frame worse on device.  Keep
+# -Os and let hd2_codec2.ld pin the archive to a 4 KB boundary for a
+# deterministic base.
+target_compile_options(codec2_hd2 PRIVATE -Os)
+
+# --- Voice prompts (codec2, decoded by the fork above) ----------------------
+# The stock codec2 player (core/voicePrompts.c) + the core clip container embed
+# (voicePromptData.S -> repo-root voiceprompts.vpc, codec2 3200).  The .S does
+# `.incbin "../voiceprompts.vpc"`; GAS resolves it via an assembler -I of
+# ${ORTX}/openrtx.  audio_codec.c/dsp.cpp (ORTX_CODEC) are the façade + DSP the
+# player pushes 8-byte codec2 frames through; audio_codec.c's `#include
+# "codec2.h"` resolves to the HD2 shim (platform/targets/HD2/codec2.h).
 set(ORTX_VP
-    ${ORTX}/openrtx/src/core/voicePrompts_adpcm.c
-    ${ORTX}/openrtx/src/core/voicePromptData_adpcm.S)
-set_source_files_properties(${ORTX}/openrtx/src/core/voicePromptData_adpcm.S
+    ${ORTX}/openrtx/src/core/voicePrompts.c
+    ${ORTX}/openrtx/src/core/voicePromptData.S)
+set_source_files_properties(${ORTX}/openrtx/src/core/voicePromptData.S
     PROPERTIES COMPILE_OPTIONS "-Wa,-I${ORTX}/openrtx")
+set(ORTX_CODEC
+    ${ORTX}/openrtx/src/core/audio_codec.c
+    ${ORTX}/openrtx/src/core/dsp.cpp)
 
 add_executable(openrtx_hd2
     ${CMAKE_SOURCE_DIR}/main.cpp
     ${CMAKE_SOURCE_DIR}/hd2_glue.cpp
     ${ORTX_CORE} ${ORTX_UI} ${ORTX_HD2} ${ORTX_RADIO} ${ORTX_STUBS}
-    ${ORTX_VP} ${ORTX_LIBS})
+    ${ORTX_VP} ${ORTX_CODEC} ${ORTX_LIBS})
 
 target_include_directories(openrtx_hd2 PRIVATE
     ${CMAKE_SOURCE_DIR}
@@ -134,6 +180,7 @@ target_include_directories(openrtx_hd2 PRIVATE
     ${ORTX}/platform
     ${ORTX}/platform/targets/HD2
     ${ORTX}/platform/mcu/HR_C7000
+    ${CODEC2_MOD}/inc
     ${ORTX}/lib/minmea/include
     ${ORTX}/lib/QRCode/include
     ${ORTX}/lib/codec/include
@@ -141,6 +188,8 @@ target_include_directories(openrtx_hd2 PRIVATE
 
 target_compile_definitions(openrtx_hd2 PRIVATE
     PLATFORM_HD2 _MIOSIX FONT_UBUNTU_REGULAR timegm=mktime
-    "GIT_VERSION=\"openrtx-hd2-min\"")
+    "GIT_VERSION=\"openrtx-hd2-vpc2\"")
+
+target_link_libraries(openrtx_hd2 PRIVATE codec2_hd2)
 
 miosix_link_target(openrtx_hd2)

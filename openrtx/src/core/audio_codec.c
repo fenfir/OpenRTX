@@ -25,6 +25,17 @@
 #define CODEC2_FRAME_SAMPLES 160 /* Samples per codec2 3200-mode frame */
 #define DMA_BUF_SAMPLES (CODEC2_FRAME_SAMPLES * 2) /* Double-buffered DMA */
 
+#ifdef PLATFORM_HD2
+/* codec2 decode benchmark (UART): time each decode, print min/avg/max per batch.
+ * The min tracks the typical (median) frame -- the metric the fork tunes to the
+ * 20 ms budget; the mean sits far higher because voiced low-pitch frames carry
+ * up to ~158 harmonics (~8x the cheapest frame's work). */
+extern unsigned long long hd2_time_ns(void);
+extern void hd2_bench_c2(unsigned long long min_ns, unsigned long long sum_ns,
+                         unsigned long long max_ns, unsigned int n);
+#define C2_BENCH_BATCH 25u /* report every 25 frames (~500 ms of audio) */
+#endif
+
 #ifndef CONFIG_MIC_GAIN
 #define CONFIG_MIC_GAIN 1
 #endif
@@ -313,7 +324,28 @@ static void *decodeFunc(void *arg)
             break;
 
         if (newData) {
+#ifdef PLATFORM_HD2
+            static unsigned long long c2SumNs = 0, c2MaxNs = 0,
+                                      c2MinNs = ~0ull;
+            static unsigned int c2Cnt = 0;
+            unsigned long long c2T0 = hd2_time_ns();
+#endif
             codec2_decode(codec2, audioBuf, ((uint8_t *)&frame));
+#ifdef PLATFORM_HD2
+            unsigned long long c2Dt = hd2_time_ns() - c2T0;
+            c2SumNs += c2Dt;
+            if (c2Dt > c2MaxNs)
+                c2MaxNs = c2Dt;
+            if (c2Dt < c2MinNs)
+                c2MinNs = c2Dt;
+            if (++c2Cnt >= C2_BENCH_BATCH) {
+                hd2_bench_c2(c2MinNs, c2SumNs, c2MaxNs, c2Cnt);
+                c2SumNs = 0;
+                c2MaxNs = 0;
+                c2MinNs = ~0ull;
+                c2Cnt = 0;
+            }
+#endif
 
 #ifdef PLATFORM_MD3x0
             // Bump up volume a little bit, as on MD3x0 is quite low
