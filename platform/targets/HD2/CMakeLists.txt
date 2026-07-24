@@ -117,13 +117,13 @@ set(ORTX_LIBS
     ${ORTX}/lib/minmea/minmea.c
     ${ORTX}/lib/QRCode/qrcode.c)
 
-# --- Custom fixed-point codec2 (M17 Codec2-mod fork) as a pinned static lib --
-# Built as its own archive (libcodec2_hd2.a) so hd2_codec2.ld can pin its .text
-# into the CK803S 4 KB I-cache.  -DC2_FIXED selects the fixed-point decode path
-# and CHANGES the codec2_t struct layout, so it must be uniform across the whole
-# archive (incl. codec2_compat.c, which sizeof()s + inits the struct).  Built -Os
-# with a monolithic .text; hd2_codec2.ld pins that .text to the CK803S 4 KB
-# I-cache boundary.  Pinned at commit 2e50cc6 of the fork.
+# --- Custom fixed-point codec2 (M17 Codec2-mod fork) as an IRAM-resident lib --
+# Built as its own archive (libcodec2_hd2.a) so hd2_codec2.ld can relocate its
+# .text to on-chip IRAM.  -DC2_FIXED selects the fixed-point decode path and
+# CHANGES the codec2_t struct layout, so it must be uniform across the whole
+# archive (incl. codec2_compat.c, which sizeof()s + inits the struct).  Built -O2
+# and executed from IRAM (see the compile-options note below).  Pinned at commit
+# 2e50cc6 of the fork.
 set(CODEC2_MOD ${ORTX}/../Codec2-mod)
 add_library(codec2_hd2 STATIC
     ${CODEC2_MOD}/src/analysis.c
@@ -143,14 +143,14 @@ target_include_directories(codec2_hd2 PRIVATE
     ${CODEC2_MOD}/inc
     ${CMAKE_CURRENT_SOURCE_DIR})           # codec2.h shim
 target_compile_definitions(codec2_hd2 PRIVATE C2_FIXED)
-# -Os with a MONOLITHIC .text (NO -ffunction-sections).  The decode hot loops are
-# I-cache-set-collision-sensitive and the fork's layout is hand-tuned (Codec2-mod
-# 2e50cc6) to keep aks_to_mag2 off a colliding set with lpc.o byte-identical at
-# its natural address.  -O2 or -ffunction-sections resize/reorder the functions
-# and reshuffle the set mapping -- measured ~6 ms/frame worse on device.  Keep
-# -Os and let hd2_codec2.ld pin the archive to a 4 KB boundary for a
-# deterministic base.
-target_compile_options(codec2_hd2 PRIVATE -Os)
+# Built -O2 and RELOCATED TO IRAM (hd2_codec2.ld copies the archive .text to
+# on-chip RAM at boot).  In FLASH the decode hot loops are
+# I-cache-set-collision-sensitive -- per-frame time depends on the .text link
+# address, so -O2 there backfires (~6 ms/frame worse) by reshuffling the set
+# mapping.  IRAM execution is uncached/collision-free, so -O2's faster code
+# carries no layout penalty and is the fast path: decode min ~12.4 ms/frame vs
+# ~15.6 ms for -Os in flash.  -O3 was a wash (~0.4 ms, +10 KB heap, worse tail).
+target_compile_options(codec2_hd2 PRIVATE -O2)
 
 # --- Voice prompts (codec2, decoded by the fork above) ----------------------
 # The stock codec2 player (core/voicePrompts.c) + the core clip container embed

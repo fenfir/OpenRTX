@@ -31,6 +31,26 @@ unsigned long long hd2_time_ns(void)
     return (unsigned long long)miosix::getTime();
 }
 
+// Relocate the codec2 archive .text to IRAM at boot.  The .codec2_ram section is
+// linked for a RAM VMA, stored (LMA) in flash; copy it into place before the
+// codec thread runs, then invalidate the whole CK803S cache (CIR[0]=INV_ALL @
+// 0xE000F004, per the TCIP user guide 4.2/4.3) so instruction fetches see the
+// freshly-written code.  Barriers order the copy before the cache op and the op
+// before the relocated code can execute.
+extern char __codec2_ram_start;
+extern char __codec2_ram_end;
+extern char __codec2_ram_load;
+void hd2_codec2_ram_init(void)
+{
+    char *dst = &__codec2_ram_start;
+    const char *src = &__codec2_ram_load;
+    while (dst < &__codec2_ram_end)
+        *dst++ = *src++;
+    __sync_synchronize();
+    *(volatile unsigned int *)0xE000F004u = 0x1u; // CIR: INV_ALL
+    __sync_synchronize();
+}
+
 // Append an unsigned decimal to *p, return the new write pointer.
 static char *hd2_u2dec(char *p, unsigned long long v)
 {

@@ -6,21 +6,23 @@
  * HD2 application linker script for the codec2 voice-prompt build.
  *
  * Identical to the board default (miosix arch/board/hrc7000_hd2/unikernel.ld +
- * ldscripts/miosix-flash-ram.ld) EXCEPT it pins the codec2 decode code
- * (libcodec2_hd2.a .text) to a 4 KB-aligned address at the very top of .text.
- * The CK803S has a single 4 KB, 4-way, 16-byte-line I-cache (64 sets, set index
- * = addr bits [9:4]); the codec2 decode hot loops are I-cache-collision-bound,
- * and their per-frame time depends on the absolute link address of the codec2
- * .text -- unrelated firmware-size changes elsewhere reshuffle the set mapping
- * and swing decode by ~3 ms.  Pinning it to a fixed 4 KB boundary makes the
- * set mapping deterministic and, with an -Os codec build (~3.9 KB working set),
- * keeps the hot path resident in the I-cache.
+ * ldscripts/miosix-flash-ram.ld) EXCEPT it RELOCATES the codec2 archive .text
+ * (libcodec2_hd2.a) from flash to on-chip IRAM: the .codec2_ram output section
+ * is linked for a RAM VMA (bottom of RAM, above the IRQ stack) with its load
+ * image (LMA) in flash, and hd2_codec2_ram_init() copies it into place at boot.
  *
- * The generic section layout below is inlined (not INCLUDEd) so the pin can sit
- * inside .text without editing the shared kernel ldscripts/miosix-flash-ram.ld,
- * which must stay byte-identical to upstream (see
- * vendor/miosix-kernel/CODEC2_CACHE_PIN.prompt.md).  Keep this section layout in
- * sync with that file if the kernel's copy ever changes.
+ * Why: the CK803S has a single 4 KB, 4-way, 16-byte-line I-cache; in FLASH the
+ * codec2 decode hot loops are I-cache-set-collision-bound, so their per-frame
+ * time depends on the absolute .text link address (a single function shift can
+ * cost >1 ms) and -O2 backfires by reshuffling the set mapping.  IRAM execution
+ * is uncached/collision-free, so a plain -O2 build runs fastest there with no
+ * layout tuning (decode min ~12.4 ms/frame vs ~15.6 ms for -Os pinned in flash).
+ *
+ * The generic section layout below is inlined (not INCLUDEd) so .codec2_ram can
+ * sit between .irq_stack and .data without editing the shared kernel
+ * ldscripts/miosix-flash-ram.ld (which stays byte-identical to upstream; see
+ * vendor/miosix-kernel/CODEC2_CACHE_PIN.prompt.md).  Keep this layout in sync
+ * with that file if the kernel's copy ever changes.
  */
 
 _irq_stack_size = 1024;
@@ -52,23 +54,15 @@ SECTIONS
         /* Interrupt vectors must be placed at the start of flash */
         KEEP(*(.isr_vector))
 
-        /* HD2: pin the codec2 archive .text to a 4 KB (I-cache-size) boundary up
-         * front, so its cache-set mapping is deterministic and immune to the
-         * rest of the firmware's layout.  The decode hot loops are
-         * I-cache-set-collision-sensitive -- their per-frame time depends on the
-         * absolute link address of the codec2 .text (a single function shift can
-         * cost >1 ms), so pinning the whole archive to a fixed 4 KB boundary
-         * keeps the set mapping deterministic.  The archive MUST stay monolithic
-         * (built -Os, NO -ffunction-sections) so the hand-tuned intra-object
-         * layout (lpc.o byte-identical, aks_to_mag2 off a colliding set) holds. */
-        . = ALIGN(4096);
-        __codec2_text_start = .;
-        *libcodec2_hd2.a:*(.text .text.*)
-        __codec2_text_end = .;
+        /* HD2: the codec2 archive .text lives in IRAM (.codec2_ram below),
+         * copied there at boot by hd2_codec2_ram_init() -- IRAM execution is
+         * uncached/collision-free, which removes the flash I-cache set-collision
+         * penalty and lets the -O2 build run fastest (see the file header).
+         * Exclude the archive from the general .text catch-alls here so its
+         * input sections fall through to .codec2_ram. */
         . = ALIGN(4);
-
-        *(.text)
-        *(.text.*)
+        *(EXCLUDE_FILE(*libcodec2_hd2.a) .text)
+        *(EXCLUDE_FILE(*libcodec2_hd2.a) .text.*)
         *(.gnu.linkonce.t.*)
         /* these sections for thumb interwork? */
         *(.glue_7)
@@ -146,6 +140,20 @@ SECTIONS
         . = . + _irq_stack_size;
         _irq_stack_top = .;
     } > ram
+
+    /* HD2: codec2 code executed from IRAM.  Load image (LMA) in flash, copied to
+     * this RAM VMA at boot by hd2_codec2_ram_init() before any codec2 call.  At
+     * the BOTTOM of RAM (above the IRQ stack, below .data) -- a fixed low region
+     * that neither the heap (grows up from .bss) nor the boot/thread stacks (top
+     * of RAM / carved from the heap) can reach. */
+    .codec2_ram : ALIGN(16)
+    {
+        __codec2_ram_start = .;
+        *libcodec2_hd2.a:*(.text .text.*)
+        . = ALIGN(8);
+        __codec2_ram_end = .;
+    } > ram AT > flash
+    __codec2_ram_load = LOADADDR(.codec2_ram);
 
     .data : ALIGN(8)
     {

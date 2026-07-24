@@ -9,10 +9,12 @@
 
 extern "C" void openrtx_init(void);
 extern "C" void *openrtx_run(void *arg);
+extern "C" void hd2_codec2_ram_init(void); // relocate codec2 .text -> IRAM
 
 int main()
 {
-    openrtx_init();       // platform/state/gfx/kbd/ui + codeplug + splash
-    openrtx_run(nullptr); // create_threads() (ui + rtx) then main_thread loop
+    hd2_codec2_ram_init(); // copy codec2 .text to IRAM before it ever runs
+    openrtx_init();        // platform/state/gfx/kbd/ui + codeplug + splash
+    openrtx_run(nullptr);  // create_threads() (ui + rtx) then main_thread loop
     return 0;
 }
